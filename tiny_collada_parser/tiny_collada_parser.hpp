@@ -6,6 +6,7 @@
 // Include files.
 #include <vector>
 #include <cstdint>
+#include <string>
 
 //  無効なストライド幅
 #define TINY_COLLADA_MESH_INVARIDATE_STRIDE  (-2)
@@ -68,6 +69,7 @@ private:
 //  Colladaメッシュデータ
 class Mesh
 {
+    friend class Perser;
 public:
     Mesh();
     ~Mesh();
@@ -83,7 +85,30 @@ public:
         return stride_vertex_ != TINY_COLLADA_MESH_INVARIDATE_STRIDE;
     }
 
-    //  
+    //  IDを取得
+    const std::string& getID() const {
+        return id_;
+    }
+    
+    const std::string& getName() const {
+        return name_;
+    }
+
+
+
+private:
+    //  IDを設定
+    void setID(const char* const id) {
+        id_ = id;
+    }
+    
+    //  名前を設定
+    void setName(const char* const name) {
+        name_ = name;
+    }
+
+    
+    
 
 
 private:
@@ -92,7 +117,8 @@ private:
     
     std::vector<float> mesh_vertex_;
     std::vector<float> mesh_normal_;
-
+    std::string name_;
+    std::string id_;
     float transform_matrix_[4][4];
 };
 
@@ -107,7 +133,10 @@ public:
 
 public:
     Result perse(const char* const dae_file_path);
-
+    
+    const std::vector<Mesh>* getMeshList() const {
+        return &meshes_;
+    }
 private:
     Result loadDae(
         tinyxml2::XMLDocument* const doc,
@@ -119,7 +148,7 @@ private:
     );
 
 private:
-    std::vector<Mesh*> mesh_;
+    std::vector<Mesh> meshes_;
 };
 
 
