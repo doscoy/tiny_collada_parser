@@ -7,6 +7,9 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <map>
+
+
 
 //  無効なストライド幅
 #define TINY_COLLADA_MESH_INVARIDATE_STRIDE  (-2)
@@ -14,6 +17,7 @@
 
 namespace tinyxml2 {
 class XMLDocument;
+class XMLElement;
 }   // namespace tinyxml2
 
 namespace tc {
@@ -66,6 +70,20 @@ private:
     Code code_;
 };
 
+
+struct SourceData {
+  int32_t stride_;
+  int32_t size_;
+  int32_t count_;
+  void* data_;
+};
+
+typedef std::map<std::string, SourceData> SourceMap;
+
+
+
+
+
 //  Colladaメッシュデータ
 class Mesh
 {
@@ -94,6 +112,9 @@ public:
         return name_;
     }
 
+    const SourceMap* getSourceMap() const {
+        return &map_;
+    }
 
 
 private:
@@ -114,7 +135,7 @@ private:
 private:
     int8_t stride_vertex_;
     int8_t stride_normal_;
-    
+    SourceMap map_;
     std::vector<float> mesh_vertex_;
     std::vector<float> mesh_normal_;
     std::string name_;
@@ -146,7 +167,11 @@ private:
     Result perseDae(
         const tinyxml2::XMLDocument* const doc
     );
-
+    
+    
+    SourceData readSource(
+        const tinyxml2::XMLElement* const source
+    );
 private:
     std::vector<Mesh> meshes_;
 };

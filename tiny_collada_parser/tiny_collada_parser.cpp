@@ -104,10 +104,10 @@ Result Perser::perseDae(
 
     while (geometry) {
         //  メッシュ情報を抜く
-        Mesh col_mesh;
+        Mesh data;
         //  メッシュのIDと名前を取得
-        col_mesh.setID(getElementAttribute(geometry, "id"));
-        col_mesh.setName(getElementAttribute(geometry, "name"));
+        data.setID(getElementAttribute(geometry, "id"));
+        data.setName(getElementAttribute(geometry, "name"));
 
         //  メッシュデータ
         const tinyxml2::XMLElement* mesh = firstChildElement(geometry, "mesh");
@@ -115,9 +115,29 @@ Result Perser::perseDae(
             const tinyxml2::XMLElement* vertices = firstChildElement(mesh, "vertices");
             const tinyxml2::XMLElement* input = firstChildElement(vertices, "input");
 
+            while (input) {
+                std::string source_name;
+                source_name = std::string(getElementAttribute(input, "source"));
+                source_name = source_name.erase(0, 1);
+                const tinyxml2::XMLElement* source = mesh->FirstChildElement("source");
+
+                while (source) {
+                    if (std::string(getElementAttribute(source, "id")) == source_name) {
+                        data.map_[std::string(getElementAttribute(input, "semantic"))] =
+                            readSource(source);
+                    }
+
+                    source = source->NextSiblingElement("source");
+                }
+
+                input = input->NextSiblingElement("input");
+            }
+
+
+
             mesh = mesh->NextSiblingElement("mesh");
         }
-        meshes_.push_back(col_mesh);
+        meshes_.push_back(data);
         
         //  次のジオメトリ
         geometry = geometry->NextSiblingElement("geometry");
@@ -216,6 +236,92 @@ Result Perser::perseDae(
 
     return Result::SUCCESS;
 }
+
+
+SourceData Perser::readSource(
+    const tinyxml2::XMLElement* const source
+) {
+  
+    char array_types[7][15] = {
+        "float_array",
+        "int_array",
+        "bool_array",
+        "Name_array",
+        "IDREF_array",
+        "SIDREF_array",
+        "token_array"
+    };
+
+
+  
+    SourceData source_data;
+    char* text;
+
+    for (int i=0; i < 7; i++) {
+        const tinyxml2::XMLElement* array = firstChildElement(source, array_types[i]);
+        if (!array) {
+            continue;
+        }
+        
+        // Find number of values
+        uint32_t num_vals;
+        array->QueryUnsignedAttribute("count", &num_vals);
+        source_data.count_ = num_vals;
+
+        // Find stride
+        const tinyxml2::XMLElement* technique_common = firstChildElement(source, "technique_common");
+        const tinyxml2::XMLElement* accessor = firstChildElement(technique_common, "accessor");
+        uint32_t stride;
+        int check = accessor->QueryUnsignedAttribute("stride", &stride);
+        if (check != tinyxml2::XML_NO_ATTRIBUTE) {
+            source_data.stride_ = stride;
+        }
+        else {
+            source_data.stride_ = 1;
+        }
+            
+        // Read array values
+        text = (char*)(array->GetText());
+
+        // Initialize mesh data according to data type
+        switch (i) {
+
+            // Array of floats
+            case 0:
+//                source_data.type = GL_FLOAT;
+                source_data.size_ = source_data.count_ * sizeof(float);
+                source_data.data_ = malloc(num_vals * sizeof(float));
+
+                // Read the float values
+                ((float*)source_data.data_)[0] = atof(strtok(text, " "));
+                for(unsigned int index=1; index<num_vals; index++) {
+                    ((float*)source_data.data_)[index] = atof(strtok(NULL, " "));
+                }
+                break;
+
+            // Array of integers
+            case 1:
+//                source_data.type = GL_INT;
+                source_data.size_ = source_data.count_ * sizeof(int);
+                source_data.data_ = malloc(num_vals * sizeof(int));
+
+                // Read the int values
+                ((int*)source_data.data_)[0] = atof(strtok(text, " "));
+                for(unsigned int index=1; index<num_vals; index++) {
+                    ((int*)source_data.data_)[index] = atof(strtok(NULL, " "));
+                }
+                break;
+
+            // Other
+            default:
+                printf("Collada Reader doesn't support mesh data in this format");
+                break;
+        }
+    }
+    return source_data;
+}
+
+
 
 
 }   // namespace tc
