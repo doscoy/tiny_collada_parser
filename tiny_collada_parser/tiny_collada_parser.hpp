@@ -140,6 +140,10 @@ private:
     std::vector<float> mesh_normal_;
     std::string name_;
     std::string id_;
+    int primitive_;
+    int index_count_;
+    unsigned short* indices_;
+
     float transform_matrix_[4][4];
 };
 
@@ -168,6 +172,10 @@ private:
         const tinyxml2::XMLDocument* const doc
     );
     
+    void perseMesh(
+        const tinyxml2::XMLElement* mesh,
+        Mesh* data
+    );
     
     SourceData readSource(
         const tinyxml2::XMLElement* const source

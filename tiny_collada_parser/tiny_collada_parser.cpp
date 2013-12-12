@@ -28,6 +28,9 @@ const char* getElementAttribute(
 }
 
 
+
+
+
 }   // unname namespace
 
 
@@ -109,34 +112,9 @@ Result Perser::perseDae(
         data.setID(getElementAttribute(geometry, "id"));
         data.setName(getElementAttribute(geometry, "name"));
 
-        //  メッシュデータ
+        //  メッシュデータ解析
         const tinyxml2::XMLElement* mesh = firstChildElement(geometry, "mesh");
-        while (mesh) {
-            const tinyxml2::XMLElement* vertices = firstChildElement(mesh, "vertices");
-            const tinyxml2::XMLElement* input = firstChildElement(vertices, "input");
-
-            while (input) {
-                std::string source_name;
-                source_name = std::string(getElementAttribute(input, "source"));
-                source_name = source_name.erase(0, 1);
-                const tinyxml2::XMLElement* source = mesh->FirstChildElement("source");
-
-                while (source) {
-                    if (std::string(getElementAttribute(source, "id")) == source_name) {
-                        data.map_[std::string(getElementAttribute(input, "semantic"))] =
-                            readSource(source);
-                    }
-
-                    source = source->NextSiblingElement("source");
-                }
-
-                input = input->NextSiblingElement("input");
-            }
-
-
-
-            mesh = mesh->NextSiblingElement("mesh");
-        }
+        perseMesh(mesh, &data);
         meshes_.push_back(data);
         
         //  次のジオメトリ
@@ -237,6 +215,95 @@ Result Perser::perseDae(
     return Result::SUCCESS;
 }
 
+//  メッシュノードの解析
+void Perser::perseMesh(
+    const tinyxml2::XMLElement* mesh,
+    tc::Mesh* data
+) {
+    while (mesh) {
+        const tinyxml2::XMLElement* vertices = firstChildElement(mesh, "vertices");
+        const tinyxml2::XMLElement* input = firstChildElement(vertices, "input");
+
+        while (input) {
+            std::string source_name;
+            source_name = std::string(getElementAttribute(input, "source"));
+            source_name = source_name.erase(0, 1);
+            const tinyxml2::XMLElement* source = mesh->FirstChildElement("source");
+
+            while (source) {
+                if (std::string(getElementAttribute(source, "id")) == source_name) {
+                    data->map_[std::string(getElementAttribute(input, "semantic"))] = readSource(source);
+                }
+
+                source = source->NextSiblingElement("source");
+            }
+
+            input = input->NextSiblingElement("input");
+        }
+
+
+        // Determine primitive type
+        for(int i=0; i<7; i++) {
+            char primitive_types[7][15] = {
+                "lines",
+                "linestrips",
+                "polygons",
+                "polylist",
+                "triangles",
+                "trifans",
+                "tristrips"
+            };
+            tinyxml2::XMLElement* primitive = firstChildElement(mesh, primitive_types[i]);
+            if (primitive) {
+          
+                // Determine number of primitives
+                int prim_count;
+                int num_indices;
+                primitive->QueryIntAttribute("count", &prim_count);
+
+                // Determine primitive type and set count
+                switch (i) {
+                    case 0:
+//                        data->primitive_ = GL_LINES;
+                        num_indices = prim_count * 2;
+                        break;
+                    case 1:
+//                        data->primitive_ = GL_LINE_STRIP;
+                        num_indices = prim_count + 1;
+                        break;
+                    case 4:
+//                        data->primitive_ = GL_TRIANGLES;
+                        num_indices = prim_count * 3;
+                        break;
+                    case 5:
+ //                       data->primitive_ = GL_TRIANGLE_FAN;
+                        num_indices = prim_count + 2;
+                        break;
+                    case 6:
+   //                     data->primitive_ = GL_TRIANGLE_STRIP;
+                        num_indices = prim_count + 2;
+                        break;
+                    default:
+                        printf("not supported.\n");
+                }
+                data->index_count = num_indices;
+
+                // Allocate memory for indices
+                data->indices = (unsigned short*)malloc(num_indices * sizeof(unsigned short));
+
+                // Read the index values
+                char* text = (char*)(primitive->FirstChildElement("p")->GetText());
+                data->indices[0] = (unsigned short)atoi(strtok(text, " "));
+                for (int index=1; index < num_indices; index++) {
+                    data.indices[index] = (unsigned short)atoi(strtok(NULL, " "));
+                }
+            }
+        }
+
+
+        mesh = mesh->NextSiblingElement("mesh");
+    }
+}
 
 SourceData Perser::readSource(
     const tinyxml2::XMLElement* const source
