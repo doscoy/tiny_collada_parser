@@ -82,12 +82,26 @@ typedef std::map<std::string, SourceData> SourceMap;
 
 
 
-
+typedef std::vector<uint16_t> Indices;
 
 //  Colladaメッシュデータ
 class Mesh
 {
     friend class Perser;
+
+public:
+    enum PrimitiveType {
+        LINE,
+        LINE_STRIP,
+        POLYGONS,
+        POLYLIST,
+        TRIANGLES,
+        TRIANGLE_FAN,
+        TRIANGLE_STRIP,
+        
+        UNKNOWN_TYPE
+    };
+    
 public:
     Mesh();
     ~Mesh();
@@ -116,6 +130,16 @@ public:
         return &map_;
     }
 
+    const std::vector<uint16_t>& getIndices() const {
+        return indices_;
+    }
+    
+    PrimitiveType getPrimitiveType() const {
+        return primitive_type_;
+    }
+    
+    
+
 
 private:
     //  IDを設定
@@ -127,8 +151,6 @@ private:
     void setName(const char* const name) {
         name_ = name;
     }
-
-    
     
 
 
@@ -140,11 +162,11 @@ private:
     std::vector<float> mesh_normal_;
     std::string name_;
     std::string id_;
-    int primitive_;
-    int index_count_;
-    unsigned short* indices_;
-
+    Indices indices_;
+    PrimitiveType primitive_type_;
     float transform_matrix_[4][4];
+    
+    
 };
 
 
@@ -172,13 +194,18 @@ private:
         const tinyxml2::XMLDocument* const doc
     );
     
-    void perseMesh(
-        const tinyxml2::XMLElement* mesh,
+    void perseMeshNode(
+        const tinyxml2::XMLElement* mesh_node,
         Mesh* data
     );
     
-    SourceData readSource(
-        const tinyxml2::XMLElement* const source
+    void readIndices(
+        char* index_text,
+        Indices* container
+    );
+    
+    SourceData readSourceNode(
+        const tinyxml2::XMLElement* const source_node
     );
 private:
     std::vector<Mesh> meshes_;
