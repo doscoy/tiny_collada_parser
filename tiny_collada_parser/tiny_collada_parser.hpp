@@ -71,23 +71,41 @@ private:
 };
 
 
-struct SourceData {
-  int32_t stride_;
-  int32_t size_;
-  int32_t count_;
-  void* data_;
-};
-
-typedef std::map<std::string, SourceData> SourceMap;
-
-
-
 typedef std::vector<uint16_t> Indices;
 
 //  Colladaメッシュデータ
 class Mesh
 {
     friend class Perser;
+
+public:
+    class ArrayData
+    {
+    public:
+        ArrayData()
+            : stride_(TINY_COLLADA_MESH_INVARIDATE_STRIDE)
+            , data_()
+        {}
+    
+        ~ArrayData()
+        {}
+    
+    public:
+        bool isValidate() const {
+            return stride_ != TINY_COLLADA_MESH_INVARIDATE_STRIDE;
+        }
+    
+        void setStride(int8_t stride) {
+            stride_ = stride;
+        }
+    
+    
+    private:
+        int8_t stride_;
+    public:
+        std::vector<float> data_;
+    };
+
 
 public:
     enum PrimitiveType {
@@ -99,22 +117,32 @@ public:
         TRIANGLE_FAN,
         TRIANGLE_STRIP,
         
+        PRIMITIVE_TYPE_NUM,
+        
         UNKNOWN_TYPE
     };
     
 public:
-    Mesh();
-    ~Mesh();
+    Mesh()
+        : vertex_()
+        , normal_()
+        , name_()
+        , id_()
+        , indices_()
+        , primitive_type_(UNKNOWN_TYPE)
+        ,transform_matrix_()
+    {}
+    ~Mesh(){}
     
 public:
     //  法線を持っているか判定
     bool hasNormal() const {
-        return stride_normal_ != TINY_COLLADA_MESH_INVARIDATE_STRIDE;
+        return normal_.isValidate();
     }
     
     //  頂点を持っているか判定
     bool hasVertex() const {
-        return stride_vertex_ != TINY_COLLADA_MESH_INVARIDATE_STRIDE;
+        return vertex_.isValidate();
     }
 
     //  IDを取得
@@ -126,18 +154,32 @@ public:
         return name_;
     }
 
-    const SourceMap* getSourceMap() const {
-        return &map_;
+    Indices* getIndices() {
+        return &indices_;
+    }
+    
+    const Indices* getIndices() const {
+        return &indices_;
     }
 
-    const std::vector<uint16_t>& getIndices() const {
-        return indices_;
+    void setPrimitiveType(
+        const PrimitiveType type
+    ) {
+        primitive_type_ = type;
     }
     
     PrimitiveType getPrimitiveType() const {
         return primitive_type_;
     }
     
+    ArrayData* getVertex() {
+        return &vertex_;
+    }
+    
+    ArrayData* getNormals() {
+        return &normal_;
+    }
+
     
 
 
@@ -155,18 +197,13 @@ private:
 
 
 private:
-    int8_t stride_vertex_;
-    int8_t stride_normal_;
-    SourceMap map_;
-    std::vector<float> mesh_vertex_;
-    std::vector<float> mesh_normal_;
+    ArrayData vertex_;
+    ArrayData normal_;
     std::string name_;
     std::string id_;
     Indices indices_;
     PrimitiveType primitive_type_;
     float transform_matrix_[4][4];
-    
-    
 };
 
 
@@ -184,6 +221,7 @@ public:
     const std::vector<Mesh>* getMeshList() const {
         return &meshes_;
     }
+    
 private:
     Result loadDae(
         tinyxml2::XMLDocument* const doc,
@@ -198,15 +236,9 @@ private:
         const tinyxml2::XMLElement* mesh_node,
         Mesh* data
     );
+
+
     
-    void readIndices(
-        char* index_text,
-        Indices* container
-    );
-    
-    SourceData readSourceNode(
-        const tinyxml2::XMLElement* const source_node
-    );
 private:
     std::vector<Mesh> meshes_;
 };

@@ -25,24 +25,39 @@ void sample01(
         printf("id = %s\n", mesh.getID().c_str());
         
         //  インデックス値ダンプ
-        const tc::Indices& indices = mesh.getIndices();
-        int index_size = indices.size();
+        const tc::Indices* indices = mesh.getIndices();
+        int index_size = indices->size();
         printf("idx count = %d\n", index_size);
-        printf("primitive = %d\n", mesh.getPrimitiveType());
-        
         for (int index_idx = 0; index_idx < index_size; ++index_idx) {
-            printf("%d ", indices[index_idx]);
+            printf("%d ", indices->at(index_idx));
         }
-        printf("\n");
         
-        
-        const tc::SourceMap* map = mesh.getSourceMap();
-        tc::SourceMap::const_iterator end = map->end();
-        
-        for (tc::SourceMap::const_iterator it = map->begin(); it != end; ++it) {
-            std::cout << it->first << std::endl;
-            printf("  size %d\n", map->at("POSITION").size_);
-            printf("  count %d\n", map->at("POSITION").count_);
+        printf("\n\n");
+
+        printf("primitive = %d\n\n", mesh.getPrimitiveType());
+
+
+        //  頂点
+        if (mesh.hasVertex()) {
+            
+            printf("vertex\n\n");
+            tc::Mesh::ArrayData* vad = mesh.getVertex();
+        }
+        else {
+            printf("has not vertex...\n\n");
+            
+        }
+
+        //  法線
+        if (mesh.hasNormal()) {
+            
+            printf("normal\n\n");
+            tc::Mesh::ArrayData* nad = mesh.getNormals();
+            
+        }
+        else {
+            printf("has not normal...\n\n");
+            
         }
     }
 }
