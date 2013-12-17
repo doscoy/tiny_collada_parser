@@ -5,8 +5,14 @@
 #include "third_party_libs/tinyxml2/tinyxml2.h"
 #include <iostream>
 
+
+
+
 namespace {
 
+
+
+//----------------------------------------------------------------------
 //  child elementを取得する
 //  大文字小文字がバージョンによってバラバラな場合はここで吸収する
 const tinyxml2::XMLElement* firstChildElement(
@@ -17,7 +23,7 @@ const tinyxml2::XMLElement* firstChildElement(
     return child;
 }
 
-
+//----------------------------------------------------------------------
 //  attributeを取得する
 //  大文字小文字がバージョンによってバラバラな場合はここで吸収する
 const char* getElementAttribute(
@@ -32,8 +38,14 @@ const char* getElementAttribute(
 uint32_t getStride(
     const tinyxml2::XMLElement* source_node
 ){
-    const tinyxml2::XMLElement* technique_common = firstChildElement(source_node, "technique_common");
-    const tinyxml2::XMLElement* accessor = firstChildElement(technique_common, "accessor");
+    const tinyxml2::XMLElement* technique_common = firstChildElement(
+        source_node, 
+        "technique_common"
+    );
+    const tinyxml2::XMLElement* accessor = firstChildElement(
+        technique_common, 
+        "accessor"
+    );
     uint32_t stride;
     int check = accessor->QueryUnsignedAttribute("stride", &stride);
     if (check == tinyxml2::XML_NO_ATTRIBUTE) {
@@ -91,9 +103,9 @@ void readSourceNode(
 //  インデックス読み込み
 void readIndices(
     const tinyxml2::XMLElement* mesh_node,
-    tc::Mesh* data
+    tc::Indices& indices
 ) {
-    // Determine primitive type
+    //  どのデータ構造でインデックスをもっているか調査
     for (int prim_idx = 0; prim_idx < tc::Mesh::PRIMITIVE_TYPE_NUM; ++prim_idx) {
         const char primitive_types_name[tc::Mesh::PRIMITIVE_TYPE_NUM][15] = {
             "lines",
@@ -119,23 +131,21 @@ void readIndices(
             mesh_node,
             primitive_types_name[prim_idx]
         );
-            
+
+        //  内包してないデータ構造なのでスキップ
         if (!primitive_node) {
-            //  知らないデータ構造なのでスキップ
             continue;
         }
-            
-        //  プリミティブ種別設定
-        data->setPrimitiveType(primitive_types[prim_idx]);
-            
+
         //  インデックス値読み込み
         char* text = const_cast<char*>(primitive_node->FirstChildElement("p")->GetText());
-        readArray(text, data->getIndices());
-            
+        readArray(text, &indices);
     }
-        
+
 }
 
+
+//----------------------------------------------------------------------
 tc::Mesh::PrimitiveType getMeshPrimitiveType(
     const tinyxml2::XMLElement* mesh_node
 ) {
@@ -177,70 +187,9 @@ tc::Mesh::PrimitiveType getMeshPrimitiveType(
     return tc::Mesh::UNKNOWN_TYPE;
 }
 
+
+
 //----------------------------------------------------------------------
-void persePolylistMeshNode(
-    const tinyxml2::XMLElement* mesh_node,
-    tc::Mesh* data
-) {
-    printf("persePolylistMeshNode\n");
-
-    const tinyxml2::XMLElement* polylist_node = firstChildElement(mesh_node, "polylist");
-    const tinyxml2::XMLElement* input_node = firstChildElement(polylist_node, "input");
-    const tinyxml2::XMLElement* source_node = mesh_node->FirstChildElement("source");
-
-    int input_num = 0;
-    while (input_node) {
-        input_num += 1;
-        
-        //  sourceアトリビュートを取得
-        const char* attr_source = getElementAttribute(input_node, "source");
-        
-        
-        //  semanticアトリビュートを取得
-        const char* attr_semantic = getElementAttribute(input_node, "semantic");
-        
-        
-        //  offsetアトリビュートを取得
-        const char* attr_offset = getElementAttribute(input_node, "offset");
-        int offset = 0;
-        if (attr_offset) {
-            offset = atoi(attr_offset);
-        }
-        printf("offset %d\n", offset);
-        
-        
-        
-        printf("a\n");
-        std::string input_source_name = std::string();
-        
-        //  source_nameの先頭の#を取る
-        input_source_name = input_source_name.erase(0, 1);
-        const tinyxml2::XMLElement* target = source_node;
-        while (target) {
-            std::string id(getElementAttribute(target, "id"));
-            printf("%s == %s\n", id.c_str(), input_source_name.c_str());
-            // 元のsourceと同じIDのものを探して解析
-            if (id == input_source_name) {
-                std::string semantic(getElementAttribute(input_node, "semantic"));
-                
-                if (semantic == std::string("VERTEX")) {
-                    readSourceNode(target, data->getVertex());
-                }
-                else if (semantic == std::string("NORMAL")) {
-                    readSourceNode(target, data->getNormals());
-                }
-                else {
-                    printf("unknown semantic %s", semantic.c_str());
-                }
-            }
-            
-            target = target->NextSiblingElement("source");
-        }
-        
-        input_node = input_node->NextSiblingElement("input");
-    }
-}
-
 void perseStandardMeshNode(
     const tinyxml2::XMLElement* mesh_node,
     tc::Mesh* data
@@ -291,6 +240,9 @@ namespace tc {
 
 //----------------------------------------------------------------------
 Perser::Perser()
+    : raw_indices_()
+    , max_offset_(0)
+    , meshes_()
 {
 }
 
@@ -345,8 +297,14 @@ Result Perser::perseDae(
 
     //  メッシュ情報が入ってるのはgeometryノード
     const tinyxml2::XMLElement* root_node = doc->RootElement();
-    const tinyxml2::XMLElement* library_geometries_node = firstChildElement(root_node, "library_geometries");
-    const tinyxml2::XMLElement* geometry_node = firstChildElement(library_geometries_node, "geometry");
+    const tinyxml2::XMLElement* library_geometries_node = firstChildElement(
+        root_node, 
+        "library_geometries"
+    );
+    const tinyxml2::XMLElement* geometry_node = firstChildElement(
+        library_geometries_node, 
+        "geometry"
+    );
 
     while (geometry_node) {
         //  メッシュ情報を抜く
@@ -379,40 +337,161 @@ void Perser::perseMeshNode(
     const tinyxml2::XMLElement* mesh_node,
     tc::Mesh* data
 ) {
-    while (mesh_node) {
+    //  まずインデックス情報を取っておく
+    readIndices(mesh_node, raw_indices_);
+
+    //  プリミティブのタイプを取得
+    tc::Mesh::PrimitiveType primitive_type = getMeshPrimitiveType(mesh_node);
     
-        //  プリミティブのタイプを取得
-        tc::Mesh::PrimitiveType primitive_type = getMeshPrimitiveType(mesh_node);
-    
-        if (primitive_type == Mesh::UNKNOWN_TYPE) {
-            //  知らないタイプなのでスキップ
-            mesh_node = mesh_node->NextSiblingElement("mesh");
-            continue;
-        }
+    if (primitive_type == Mesh::UNKNOWN_TYPE) {
+        //  知らないタイプなのでスキップ
+        return;
+    }
         
-        if (primitive_type == Mesh::POLYLIST) {
-            persePolylistMeshNode(
-                mesh_node,
-                data
-            );
-        }
-        else {
-            perseStandardMeshNode(
-                mesh_node,
-                data
-            );
-        }
-    
+    if (primitive_type == Mesh::POLYLIST) {
+        persePolylistMeshNode(
+            mesh_node,
+            data
+        );
+    }
+    else {
+        perseStandardMeshNode(
+            mesh_node,
+            data
+        );
+    }
+   
 
-        readIndices(mesh_node, data);
+}
 
-        mesh_node = mesh_node->NextSiblingElement("mesh");
+void Perser::setupIndices(
+    Indices& out,
+    int start_offset,
+    int stride
+) {
+    for (int i = start_offset; i < raw_indices_.size(); i += stride) {
+        out.push_back(raw_indices_.at(i));
     }
 }
 
 
+//----------------------------------------------------------------------
+void Perser::persePolylistMeshNode(
+    const tinyxml2::XMLElement* mesh_node,
+    tc::Mesh* data
+) {
+    printf("persePolylistMeshNode\n");
 
+    const tinyxml2::XMLElement* polylist_node = firstChildElement(mesh_node, "polylist");
+    const tinyxml2::XMLElement* input_node = firstChildElement(polylist_node, "input");
+    const tinyxml2::XMLElement* source_node = mesh_node->FirstChildElement("source");
 
+    int count = atoi(getElementAttribute(polylist_node, "count"));
+    printf("count = %d\n", count);
+    int input_num = 0;
+    while (input_node) {
+        input_num += 1;
+        
+        //  sourceアトリビュートを取得
+        const char* attr_source = getElementAttribute(input_node, "source");
+
+        //  semanticアトリビュートを取得
+        const char* attr_semantic = getElementAttribute(input_node, "semantic");
+        
+        //  offsetアトリビュートを取得
+        const char* attr_offset = getElementAttribute(input_node, "offset");
+        int offset = 0;
+        if (attr_offset) {
+            offset = atoi(attr_offset);
+        }
+        printf("offset %d\n", offset);
+        
+
+        //  source_nameの先頭の#を取る
+        if (attr_source[0] == '#') {
+            attr_source = &attr_source[1];
+        }
+
+        const tinyxml2::XMLElement* target = source_node;
+        bool found = false;
+        while (target) {
+            const char* id = getElementAttribute(target, "id");
+            printf("%s == %s\n", id, attr_source);
+            // 元のsourceと同じIDのものを探して解析
+            if (std::strncmp(id, attr_source, 64) == 0) {
+                found = true;
+                if (std::strncmp(attr_semantic, "VERTEX", 6) == 0) {
+                    tc::Mesh::ArrayData* vertex = data->getVertex();
+                    readSourceNode(target, vertex);
+                    setupIndices(vertex->indices_, offset, count);
+
+                }
+                else if (std::strncmp(attr_semantic, "NORMAL", 6) == 0) {
+                    tc::Mesh::ArrayData* normal = data->getNormals();
+                    readSourceNode(target, normal);
+                    setupIndices(normal->indices_, offset, count);
+
+                }
+                else {
+                    printf("unknown semantic %s", attr_semantic);
+                }
+            }
+            
+            target = target->NextSiblingElement("source");
+        }
+
+        if (!found) {
+            //  見つからなかったのでverticesを探す
+            const tinyxml2::XMLElement* vertices_node = firstChildElement(
+                mesh_node, 
+                "vertices"
+            );
+            const char* vertices_id = getElementAttribute(vertices_node, "id");
+
+            printf("%s == %s\n", vertices_id, attr_source);
+            // 元のsourceと同じIDのものを探して解析
+            if (std::strncmp(vertices_id, attr_source, 64) == 0) {
+                //  verticesにあった
+                //  verticesのinputをソースから探す
+                const tinyxml2::XMLElement* vert_input = firstChildElement(vertices_node, "input");
+                const char* vert_semantic = getElementAttribute(vert_input, "semantic");
+                const char* vert_source = getElementAttribute(vert_input, "source");
+                const tinyxml2::XMLElement* vert_target = source_node;
+                //  source_nameの先頭の#を取る
+                if (vert_source[0] == '#') {
+                    vert_source = &vert_source[1];
+                }
+                while (vert_target) {
+                    const char* id = getElementAttribute(vert_target, "id");
+                    printf("[id]%s == [src]%s\n", id, vert_source);
+                    // 元のsourceと同じIDのものを探して解析
+                    if (std::strncmp(id, vert_source, 64) == 0) {
+                        found = true;
+                        if (std::strncmp(vert_semantic, "POSITION", 6) == 0) {
+                            tc::Mesh::ArrayData* vertex = data->getVertex();
+                            readSourceNode(vert_target, vertex);
+                            setupIndices(vertex->indices_, offset, count);
+
+                        }
+                        else if (std::strncmp(vert_semantic, "NORMAL", 6) == 0) {
+                            tc::Mesh::ArrayData* normal = data->getNormals();
+                            readSourceNode(vert_target, normal);
+                            setupIndices(normal->indices_, offset, count);
+
+                        }
+                        else {
+                            printf("unknown semantic %s", vert_semantic);
+                        }
+                    }
+                    vert_target = vert_target->NextSiblingElement("source");
+                }
+            }
+
+        }
+        
+        input_node = input_node->NextSiblingElement("input");
+    }
+}
 
 }   // namespace tc
 

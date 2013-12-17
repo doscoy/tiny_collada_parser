@@ -25,10 +25,9 @@ void sample01(
         printf("id = %s\n", mesh.getID().c_str());
         
         //  インデックス値ダンプ
-        const tc::Indices* indices = mesh.getIndices();
-        int index_size = indices->size();
-        printf("idx count = %d\n", index_size);
-        for (int index_idx = 0; index_idx < index_size; ++index_idx) {
+        const tc::Indices* indices = &perser.raw_indices_;
+        printf("idx count = %d\n", indices->size());
+        for (int index_idx = 0; index_idx < indices->size(); ++index_idx) {
             printf("%d ", indices->at(index_idx));
         }
         
@@ -42,6 +41,15 @@ void sample01(
             
             printf("vertex\n\n");
             tc::Mesh::ArrayData* vad = mesh.getVertex();
+            std::vector<float>& ary = vad->data_;
+            for (int adi = 0; adi < ary.size(); ++adi) {
+                printf("%f ", ary[adi]);
+            }
+            printf("\n");
+            tc::Indices& ind = vad->indices_;
+            for (int adi = 0; adi < ind.size(); ++adi) {
+                printf("%d ", ind[adi]);
+            }
         }
         else {
             printf("has not vertex...\n\n");
@@ -53,7 +61,17 @@ void sample01(
             
             printf("normal\n\n");
             tc::Mesh::ArrayData* nad = mesh.getNormals();
-            
+            std::vector<float>& ary = nad->data_;
+            for (int adi = 0; adi < ary.size(); ++adi) {
+                printf("%f ", ary[adi]);
+            }
+            printf("\n");
+            tc::Indices& ind = nad->indices_;
+            for (int adi = 0; adi < ind.size(); ++adi) {
+                printf("%d ", ind[adi]);
+            }
+            printf("\n");
+
         }
         else {
             printf("has not normal...\n\n");

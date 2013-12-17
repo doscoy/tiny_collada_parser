@@ -104,6 +104,8 @@ public:
         int8_t stride_;
     public:
         std::vector<float> data_;
+        Indices indices_;
+
     };
 
 
@@ -130,7 +132,6 @@ public:
         , id_()
         , indices_()
         , primitive_type_(UNKNOWN_TYPE)
-        ,transform_matrix_()
     {}
     ~Mesh(){}
     
@@ -203,7 +204,6 @@ private:
     std::string id_;
     Indices indices_;
     PrimitiveType primitive_type_;
-    float transform_matrix_[4][4];
 };
 
 
@@ -237,10 +237,25 @@ private:
         Mesh* data
     );
 
+    void persePolylistMeshNode(
+        const tinyxml2::XMLElement* mesh_node,
+        tc::Mesh* data
+    );
 
+
+    void Perser::setupIndices(
+        Indices& out,
+        int start_offset,
+        int stride
+    );
+
+    void readIndicesMaxOffset();
     
-private:
+public:
     std::vector<Mesh> meshes_;
+    Indices raw_indices_;
+    int max_offset_;
+
 };
 
 
