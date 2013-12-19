@@ -21,9 +21,6 @@ void sample01(
     for (int i = 0; i < meshes->size(); ++i) {
         tc::Mesh mesh = meshes->at(i);
         
-        printf("name = %s\n", mesh.getName().c_str());
-        printf("id = %s\n", mesh.getID().c_str());
-        
         //  インデックス値ダンプ
         const tc::Indices* indices = &perser.raw_indices_;
         printf("idx count = %d\n", indices->size());

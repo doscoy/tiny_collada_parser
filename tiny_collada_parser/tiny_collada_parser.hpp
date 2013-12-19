@@ -22,6 +22,39 @@ class XMLElement;
 
 namespace tc {
 
+//  インプットデータ
+struct InputData
+{
+    InputData()
+        : semantic_(nullptr)
+        , source_(nullptr)
+        , offset_(0)
+    {}
+
+    const char* semantic_;
+    const char* source_;
+    int offset_;
+};
+
+//  ソースデータ
+struct SourceData
+{
+    SourceData()
+        : id_(nullptr)
+        , stride_(0)
+        , data_()
+        , input_(nullptr)
+    {}
+
+    const char* id_;
+    uint32_t stride_;
+    std::vector<float> data_;
+    InputData* input_;
+};
+
+
+
+
 //  リザルトコード
 class Result
 {
@@ -128,9 +161,6 @@ public:
     Mesh()
         : vertex_()
         , normal_()
-        , name_()
-        , id_()
-        , indices_()
         , primitive_type_(UNKNOWN_TYPE)
     {}
     ~Mesh(){}
@@ -144,23 +174,6 @@ public:
     //  頂点を持っているか判定
     bool hasVertex() const {
         return vertex_.isValidate();
-    }
-
-    //  IDを取得
-    const std::string& getID() const {
-        return id_;
-    }
-    
-    const std::string& getName() const {
-        return name_;
-    }
-
-    Indices* getIndices() {
-        return &indices_;
-    }
-    
-    const Indices* getIndices() const {
-        return &indices_;
     }
 
     void setPrimitiveType(
@@ -184,25 +197,9 @@ public:
     
 
 
-private:
-    //  IDを設定
-    void setID(const char* const id) {
-        id_ = id;
-    }
-    
-    //  名前を設定
-    void setName(const char* const name) {
-        name_ = name;
-    }
-    
-
-
-private:
+public:
     ArrayData vertex_;
     ArrayData normal_;
-    std::string name_;
-    std::string id_;
-    Indices indices_;
     PrimitiveType primitive_type_;
 };
 
@@ -223,12 +220,8 @@ public:
     }
     
 private:
-    Result loadDae(
-        tinyxml2::XMLDocument* const doc,
-        const char* const dae_file_path
-    );
     
-    Result perseDae(
+    Result perseCollada(
         const tinyxml2::XMLDocument* const doc
     );
     
@@ -236,12 +229,6 @@ private:
         const tinyxml2::XMLElement* mesh_node,
         Mesh* data
     );
-
-    void persePolylistMeshNode(
-        const tinyxml2::XMLElement* mesh_node,
-        tc::Mesh* data
-    );
-
 
     void Perser::setupIndices(
         Indices& out,
@@ -251,11 +238,16 @@ private:
 
     void readIndicesMaxOffset();
     
-public:
-    std::vector<Mesh> meshes_;
-    Indices raw_indices_;
-    int max_offset_;
 
+    void relateSourcesToInputs();
+    InputData* searchInputBySource(const char* const id);
+    SourceData* searchSourceBySemantic(const char* const semantic);
+    void setupMesh(Mesh* mesh);
+public:
+    Indices raw_indices_;
+    std::vector<Mesh> meshes_;
+    std::vector<SourceData> sources_;
+    std::vector<InputData> inputs_;
 };
 
 
