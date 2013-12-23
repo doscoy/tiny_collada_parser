@@ -6,62 +6,20 @@
 // Include files.
 #include <vector>
 #include <cstdint>
-#include <string>
-#include <map>
 
 
 
-//  無効なストライド幅
-#define TINY_COLLADA_MESH_INVARIDATE_STRIDE  (-2)
-
-
-namespace tinyxml2 {
-class XMLDocument;
-class XMLElement;
-}   // namespace tinyxml2
 
 namespace tc {
-
-//  インプットデータ
-struct InputData
-{
-    InputData()
-        : semantic_(nullptr)
-        , source_(nullptr)
-        , offset_(0)
-    {}
-
-    const char* semantic_;
-    const char* source_;
-    int offset_;
-};
-
-//  ソースデータ
-struct SourceData
-{
-    SourceData()
-        : id_(nullptr)
-        , stride_(0)
-        , data_()
-        , input_(nullptr)
-    {}
-
-    const char* id_;
-    uint32_t stride_;
-    std::vector<float> data_;
-    InputData* input_;
-};
-
-
 
 
 //  リザルトコード
 class Result
 {
-    friend class Perser;
+    friend class Parser;
 public:
-    enum Code {
-        SUCCESS = 0,
+    enum class Code {
+        SUCCESS,
         READ_ERROR,
         PERSE_ERROR,
     };
@@ -69,7 +27,7 @@ public:
 
 public:
     Result()
-        : code_(SUCCESS)
+        : code_(Code::SUCCESS)
     {}
     
     Result(Code code)
@@ -78,11 +36,11 @@ public:
 
 public:
     bool isSucceed() const {
-        return code_ == SUCCESS;
+        return code_ == Code::SUCCESS;
     }
     
     bool isFailed() const {
-        return code_ != SUCCESS;
+        return code_ != Code::SUCCESS;
     }
     
     //  現在のエラーコードを取得
@@ -103,21 +61,22 @@ private:
     Code code_;
 };
 
-
-typedef std::vector<uint16_t> Indices;
+class Mesh;
+typedef ::std::vector<uint16_t> Indices;
+typedef ::std::vector<float> Vertices;
+typedef ::std::vector<::std::shared_ptr<Mesh>> Meshes;
 
 //  Colladaメッシュデータ
-class Mesh
+class Mesh final
 {
-    friend class Perser;
-
 public:
     class ArrayData
     {
     public:
         ArrayData()
-            : stride_(TINY_COLLADA_MESH_INVARIDATE_STRIDE)
+            : stride_(0)
             , data_()
+            , indices_()
         {}
     
         ~ArrayData()
@@ -125,17 +84,17 @@ public:
     
     public:
         bool isValidate() const {
-            return stride_ != TINY_COLLADA_MESH_INVARIDATE_STRIDE;
+            return stride_ != 0;
         }
     
         void setStride(int8_t stride) {
             stride_ = stride;
         }
     
-    
-    private:
-        int8_t stride_;
+        void dump();
+
     public:
+        int8_t stride_;
         std::vector<float> data_;
         Indices indices_;
 
@@ -164,6 +123,9 @@ public:
         , primitive_type_(UNKNOWN_TYPE)
     {}
     ~Mesh(){}
+    Mesh& operator=(const Mesh&) = delete;	// コピーの禁止
+    Mesh(const Mesh&) = delete;
+
     
 public:
     //  法線を持っているか判定
@@ -194,7 +156,7 @@ public:
         return &normal_;
     }
 
-    
+    void dump();
 
 
 public:
@@ -206,48 +168,22 @@ public:
 
 
 //  パーサー
-class Perser
+class Parser final
 {
 public:
-    Perser();
-    ~Perser();
-
+    Parser();
+    ~Parser();
+    Parser& operator=(const Parser&) = delete;	// コピーの禁止
+    Parser(const Parser&) = delete;
 public:
-    Result perse(const char* const dae_file_path);
+    Result parse(const char* const dae_file_path);
     
-    const std::vector<Mesh>* getMeshList() const {
-        return &meshes_;
-    }
+    const Meshes* meshes() const;
     
 private:
-    
-    Result perseCollada(
-        const tinyxml2::XMLDocument* const doc
-    );
-    
-    void perseMeshNode(
-        const tinyxml2::XMLElement* mesh_node,
-        Mesh* data
-    );
+    class Impl;
+    ::std::unique_ptr<Impl> impl_;
 
-    void Perser::setupIndices(
-        Indices& out,
-        int start_offset,
-        int stride
-    );
-
-    void readIndicesMaxOffset();
-    
-
-    void relateSourcesToInputs();
-    InputData* searchInputBySource(const char* const id);
-    SourceData* searchSourceBySemantic(const char* const semantic);
-    void setupMesh(Mesh* mesh);
-public:
-    Indices raw_indices_;
-    std::vector<Mesh> meshes_;
-    std::vector<SourceData> sources_;
-    std::vector<InputData> inputs_;
 };
 
 

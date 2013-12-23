@@ -1,15 +1,67 @@
 //  mcp_parser.cpp
 
-#include <cstring>
 #include "tiny_collada_parser.hpp"
 #include "third_party_libs/tinyxml2/tinyxml2.h"
-#include <iostream>
+
+
+
+#if 0
+#define TINY_COLLADA_TRACE(...)         ::std::printf(__VA_ARGS__)
+#else
+#define TINY_COLLADA_TRACE(...)         (void)0
+#endif
 
 
 namespace xml = tinyxml2;
 
 
+
+
+
+
+
+
+
+
+
+
+
 namespace {
+
+
+constexpr size_t STRING_COMP_SIZE = 64;
+
+
+//  インプットデータ
+struct InputData
+{
+    InputData()
+        : semantic_(nullptr)
+        , source_(nullptr)
+        , offset_(0)
+    {}
+    
+    const char* semantic_;
+    const char* source_;
+    int offset_;
+};
+    
+//  ソースデータ
+struct SourceData
+{
+    SourceData()
+        : id_(nullptr)
+        , stride_(0)
+        , data_()
+        , input_(nullptr)
+    {}
+    
+    const char* id_;
+    uint32_t stride_;
+    std::vector<float> data_;
+    InputData* input_;
+};
+    
 
 
 //----------------------------------------------------------------------
@@ -76,7 +128,7 @@ void readArray(
 //  ソース解析
 void readSourceNode(
     const xml::XMLElement* const source_node,
-    tc::SourceData* out
+    SourceData* out
 ) {
         
     char array_types[2][15] = {
@@ -145,64 +197,22 @@ void collectIndices(
         char* text = const_cast<char*>(primitive_node->FirstChildElement("p")->GetText());
        readArray(text, &indices);
     }
+    
+    TINY_COLLADA_TRACE("Collect index size = %lu\n", indices.size());
 }
-
-//----------------------------------------------------------------------
-tc::Mesh::PrimitiveType getMeshPrimitiveType(
-    const xml::XMLElement* mesh_node
-) {
-    for (int prim_idx =0; prim_idx < tc::Mesh::PRIMITIVE_TYPE_NUM; ++prim_idx) {
-
-        const char primitive_types_name[tc::Mesh::PRIMITIVE_TYPE_NUM][15] = {
-            "lines",
-            "linestrips",
-            "polygons",
-            "polylist",
-            "triangles",
-            "trifans",
-            "tristrips"
-        };
-        
-        const tc::Mesh::PrimitiveType primitive_types[tc::Mesh::PRIMITIVE_TYPE_NUM] = {
-            tc::Mesh::LINE,
-            tc::Mesh::LINE_STRIP,
-            tc::Mesh::POLYGONS,
-            tc::Mesh::POLYLIST,
-            tc::Mesh::TRIANGLES,
-            tc::Mesh::TRIANGLE_FAN,
-            tc::Mesh::TRIANGLE_STRIP
-        };
-        
-        const xml::XMLElement* primitive_node = firstChildElement(
-            mesh_node,
-            primitive_types_name[prim_idx]
-        );
-        
-        if (!primitive_node) {
-            //  知らないデータ構造なのでスキップ
-            continue;
-        }
-        
-        return primitive_types[prim_idx];
-    }
-
-    return tc::Mesh::UNKNOWN_TYPE;
-}
-
-
 
 
 
 //----------------------------------------------------------------------
 //  メッシュノードのソース情報を取得
 void collectMeshSources(
-    std::vector<tc::SourceData>& out,
+    std::vector<SourceData>& out,
     const xml::XMLElement* mesh
 ){
     //  ソースノードを総なめして情報を保存
     const xml::XMLElement* target = firstChildElement(mesh, "source");
     while (target) {
-        tc::SourceData data;
+        SourceData data;
         //  ID保存
         data.id_ = getElementAttribute(target, "id");
         
@@ -221,7 +231,7 @@ void collectMeshSources(
 //----------------------------------------------------------------------
 //  インプット情報を取得
 void collectMeshInputs(
-    std::vector<tc::InputData>& out,
+    std::vector<InputData>& out,
     const xml::XMLElement* mesh,
     const char* const target_name
 ){
@@ -233,7 +243,7 @@ void collectMeshInputs(
     const xml::XMLElement* input_node = firstChildElement(target_node, "input");
 
     while (input_node) {
-        tc::InputData input;
+        InputData input;
         //  sourceアトリビュートを取得
         const char* attr_source = getElementAttribute(input_node, "source");
         //  source_nameの先頭の#を取る
@@ -244,7 +254,7 @@ void collectMeshInputs(
         //  verticesノードのinputで置き換えるべきものか判定
         if (vertices) {
             const char* vertices_id = getElementAttribute(vertices, "id");
-            if (std::strncmp(attr_source, vertices_id, 64) == 0) {
+            if (std::strncmp(attr_source, vertices_id, STRING_COMP_SIZE) == 0) {
                 const xml::XMLElement* vert_input_node = firstChildElement(vertices, "input");
                 //  verticesノードのinputで置き換える
                 const char* vert_source = getElementAttribute(vert_input_node, "source");
@@ -291,8 +301,12 @@ void collectMeshInputs(
 
 namespace tc {
 
-//----------------------------------------------------------------------
-Perser::Perser()
+
+
+class Parser::Impl
+{
+public:
+Impl()
     : raw_indices_()
     , meshes_()
     , sources_()
@@ -300,147 +314,138 @@ Perser::Perser()
 {
 }
 
-//----------------------------------------------------------------------
-Perser::~Perser()
+~Impl()
 {
 }
 
+    
 //----------------------------------------------------------------------
-Result Perser::perse(
-    const char* const dae_path
-) {
-   
-    //  tiny xmlを使って.daeを読み込む
-    xml::XMLDocument doc;
-    xml::XMLError load_error = doc.LoadFile(dae_path);
-    if (load_error != xml::XML_SUCCESS) {
-        return Result::READ_ERROR;
-    }
-    doc.Print();
-
-
-    //  解析
-    Result perse_result = perseCollada(&doc);
-    if (perse_result.isFailed()) {
-        return perse_result;
-    }
-
-    return Result::SUCCESS;
-}
-
-//----------------------------------------------------------------------
-Result Perser::perseCollada(
+Result parseCollada(
     const xml::XMLDocument* const doc
 ) {
-
+    
     //  メッシュ情報が入ってるのはgeometryノード
     const xml::XMLElement* root_node = doc->RootElement();
     const xml::XMLElement* library_geometries_node = firstChildElement(
-        root_node, 
+        root_node,
         "library_geometries"
     );
     const xml::XMLElement* geometry_node = firstChildElement(
-        library_geometries_node, 
+        library_geometries_node,
         "geometry"
     );
-
+    
     while (geometry_node) {
         //  メッシュデータ解析
-        Mesh data;
+        std::shared_ptr<Mesh> data = std::make_shared<Mesh>();
         const xml::XMLElement* mesh_node = firstChildElement(geometry_node, "mesh");
-
-        perseMeshNode(mesh_node, &data);
+        
+        parseMeshNode(mesh_node, data);
         meshes_.push_back(data);
         
         //  次のジオメトリ
         geometry_node = geometry_node->NextSiblingElement("geometry");
     }
-
-    return Result::SUCCESS;
+    
+    return Result::Code::SUCCESS;
 }
 
 //----------------------------------------------------------------------
 //  メッシュノードの解析
-void Perser::perseMeshNode(
+void parseMeshNode(
     const xml::XMLElement* mesh_node,
-    tc::Mesh* data
+    ::std::shared_ptr<tc::Mesh> data
 ) {
     //  インデックス情報保存
     collectIndices(mesh_node, raw_indices_);
-
+    
     //  ソースノードの情報保存
     collectMeshSources(sources_, mesh_node);
-
+    
     //  インプットノードの情報保存
     collectMeshInputs(inputs_, mesh_node, "polylist");
-
+    
     //  ソースとインプットを関連付け
     relateSourcesToInputs();
     
     setupMesh(data);
-        
+    
 }
 
 //----------------------------------------------------------------------
-void Perser::setupMesh(
-    tc::Mesh* mesh
+void setupMesh(
+    ::std::shared_ptr<tc::Mesh> mesh
 ) {
     SourceData* pos_source = searchSourceBySemantic("POSITION");
     if (pos_source) {
         mesh->vertex_.data_ = pos_source->data_;
+        mesh->vertex_.stride_ = pos_source->stride_;
+        setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, 2);
     }
-
+    
     SourceData* normal_source = searchSourceBySemantic("NORMAL");
     if (normal_source) {
         mesh->normal_.data_ = normal_source->data_;
+        mesh->normal_.stride_ = normal_source->stride_;
+        setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, 2);
     }
-
 }
+
+
 
 //----------------------------------------------------------------------
 //  事前に抜いておいたインデックス一覧からインデックスのセットアップ
-void Perser::setupIndices(
+void setupIndices(
     Indices& out,
     int start_offset,
     int stride
 ) {
+    TINY_COLLADA_TRACE("%s start_offset = %d stride = %d\n", __FUNCTION__, start_offset, stride);
     for (int i = start_offset; i < raw_indices_.size(); i += stride) {
         out.push_back(raw_indices_.at(i));
     }
+    TINY_COLLADA_TRACE("get size = %lu\n", out.size());
 }
 
 
-
+    
 //----------------------------------------------------------------------
 //  メッシュから抜いたinputsとsourcesを関連付ける
-void Perser::relateSourcesToInputs()
+void relateSourcesToInputs()
 {
+    TINY_COLLADA_TRACE("%s\n", __FUNCTION__);
     std::vector<SourceData>::iterator src_it = sources_.begin();
     std::vector<SourceData>::iterator src_end = sources_.end();
-
+    
     for (; src_it != src_end; ++src_it) {
         src_it->input_ = searchInputBySource(src_it->id_);
+        TINY_COLLADA_TRACE(" %s", src_it->id_);
+        if (src_it->input_) {
+            TINY_COLLADA_TRACE(" OK\n");
+        }
+        else {
+            TINY_COLLADA_TRACE(" NG\n");
+        }
     }
 }
-
-
+    
 //----------------------------------------------------------------------
 //  指定idのinputを探す
-InputData* Perser::searchInputBySource(
+InputData* searchInputBySource(
     const char* const id
 ) {
     for (int i = 0; i < inputs_.size(); ++i) {
         InputData* input = &inputs_[i];
-        if (std::strncmp(input->source_, id, 64) == 0){
+        if (std::strncmp(input->source_, id, STRING_COMP_SIZE) == 0){
             return input;
         }
     }
     return nullptr;
 }
-
+    
 //----------------------------------------------------------------------
 //  指定semanticのsourceを探す
-SourceData* Perser::searchSourceBySemantic(
+SourceData* searchSourceBySemantic(
     const char* const semantic
 ) {
     for (int i = 0; i < sources_.size(); ++i) {
@@ -449,16 +454,126 @@ SourceData* Perser::searchSourceBySemantic(
         if (!input) {
             continue;
         }
-        
-        if (std::strncmp(input->semantic_, semantic, 64)) {
+            
+        if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE)) {
+            TINY_COLLADA_TRACE("%s - %s FOUND.\n", __FUNCTION__, semantic);
             return source;
         }
     }
-
+    TINY_COLLADA_TRACE("%s - %s NOT FOUND.\n", __FUNCTION__, semantic);
+        
     return nullptr;
 }
 
+//----------------------------------------------------------------------
+//  メッシュリスト取得
+const Meshes* getMeshList() const {
+    
+    return &meshes_;
+}
 
+
+private:
+    Indices raw_indices_;
+    Meshes meshes_;
+    std::vector<SourceData> sources_;
+    std::vector<InputData> inputs_;
+
+};  // class Parser::Impl
+
+
+
+//----------------------------------------------------------------------
+Parser::Parser()
+    : impl_(nullptr)
+{
+    impl_.reset(new Impl());
+}
+
+//----------------------------------------------------------------------
+Parser::~Parser()
+{
+}
+
+//----------------------------------------------------------------------
+Result Parser::parse(
+    const char* const dae_path
+) {
+   
+    //  tiny xmlを使って.daeを読み込む
+    xml::XMLDocument doc;
+    xml::XMLError load_error = doc.LoadFile(dae_path);
+    if (load_error != xml::XML_SUCCESS) {
+        return Result::Code::READ_ERROR;
+    }
+//    doc.Print();
+
+
+    //  解析
+    Result parse_result = impl_->parseCollada(&doc);
+    if (parse_result.isFailed()) {
+        return parse_result;
+    }
+
+    return Result::Code::SUCCESS;
+}
+
+    
+const Meshes* Parser::meshes() const
+{
+    return impl_->getMeshList();
+}
+
+//----------------------------------------------------------------------
+//  データをコンソールに出力
+void Mesh::dump()
+{
+    printf("--- Vertex data dump ---\n");
+    vertex_.dump();
+    printf("\n");
+    printf("--- Normal data dump ---\n");
+    normal_.dump();
+    printf("\n");
+    
+}
+
+//----------------------------------------------------------------------
+//  データをコンソールに出力
+void Mesh::ArrayData::dump()
+{
+    if (!isValidate()) {
+        printf("This ArrayData is invalidate data.\n");
+        return;
+    }
+    printf("vertices   size = %lu\n", data_.size());
+    size_t data_size = data_.size();
+    //  データ
+    if (data_size > 0) {
+        for (size_t i = 0; i < data_size; ++i) {
+            printf(" %f", data_[i]);
+        }
+        printf("\n");
+    }
+    else {
+        printf("nothing.\n");
+    }
+    
+    //  インデックス
+    printf("indices   size = %lu\n", indices_.size());
+    size_t idx_size = indices_.size();
+    //  データ
+    if (idx_size > 0) {
+        for (size_t i = 0; i < idx_size; ++i) {
+            printf(" %d", indices_[i]);
+        }
+        printf("\n");
+    }
+    else {
+        printf("nothing.\n");
+    }
+    
+    
+}
 
 }   // namespace tc
 
