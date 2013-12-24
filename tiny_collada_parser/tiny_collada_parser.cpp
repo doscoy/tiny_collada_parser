@@ -5,7 +5,7 @@
 
 
 
-#if 0
+#if 1
 #define TINY_COLLADA_TRACE(...)         ::std::printf(__VA_ARGS__)
 #else
 #define TINY_COLLADA_TRACE(...)         (void)0
@@ -29,7 +29,7 @@ namespace xml = tinyxml2;
 namespace {
 
 
-constexpr size_t STRING_COMP_SIZE = 64;
+const size_t STRING_COMP_SIZE = 64;
 
 
 //  インプットデータ
@@ -367,7 +367,15 @@ void parseMeshNode(
     
     //  ソースとインプットを関連付け
     relateSourcesToInputs();
-    
+    printf("\n\n");
+    for (int i = 0; i < sources_.size(); ++i) {
+        SourceData* src = &sources_[i];
+        printf("SRC:%s - INPUT:%s\n", src->id_, src->input_->source_);
+        printf("  DATA size %d\n", src->data_.size());
+    }
+    printf("\n\n");
+
+
     setupMesh(data);
     
 }
@@ -378,6 +386,7 @@ void setupMesh(
 ) {
     SourceData* pos_source = searchSourceBySemantic("POSITION");
     if (pos_source) {
+        printf("pos_source size %d\n", pos_source->data_.size());
         mesh->vertex_.data_ = pos_source->data_;
         mesh->vertex_.stride_ = pos_source->stride_;
         setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, 2);
@@ -385,6 +394,7 @@ void setupMesh(
     
     SourceData* normal_source = searchSourceBySemantic("NORMAL");
     if (normal_source) {
+        printf("normal_source size %d\n", normal_source->data_.size());
         mesh->normal_.data_ = normal_source->data_;
         mesh->normal_.stride_ = normal_source->stride_;
         setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, 2);
@@ -418,8 +428,9 @@ void relateSourcesToInputs()
     std::vector<SourceData>::iterator src_end = sources_.end();
     
     for (; src_it != src_end; ++src_it) {
-        src_it->input_ = searchInputBySource(src_it->id_);
-        TINY_COLLADA_TRACE(" %s", src_it->id_);
+        InputData* input = searchInputBySource(src_it->id_);
+        src_it->input_ = input;
+        TINY_COLLADA_TRACE(" %s -- %s[%s]", src_it->id_, input->semantic_, input->source_);
         if (src_it->input_) {
             TINY_COLLADA_TRACE(" OK\n");
         }
@@ -448,15 +459,16 @@ InputData* searchInputBySource(
 SourceData* searchSourceBySemantic(
     const char* const semantic
 ) {
+    printf("\nsearchSourceBySemantic %s\n", semantic);
     for (int i = 0; i < sources_.size(); ++i) {
         SourceData* source = &sources_[i];
         InputData* input = source->input_;
         if (!input) {
             continue;
         }
-            
-        if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE)) {
-            TINY_COLLADA_TRACE("%s - %s FOUND.\n", __FUNCTION__, semantic);
+        printf("  %s %s\n", input->semantic_, input->source_);   
+        if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE) == 0) {
+            TINY_COLLADA_TRACE("%s - %s [%s] FOUND.\n", __FUNCTION__, semantic, input->source_);
             return source;
         }
     }
@@ -545,7 +557,7 @@ void Mesh::ArrayData::dump()
         printf("This ArrayData is invalidate data.\n");
         return;
     }
-    printf("vertices   size = %lu\n", data_.size());
+    printf("vertices   size = %lu  stride = %lu\n", data_.size(), stride_);
     size_t data_size = data_.size();
     //  データ
     if (data_size > 0) {

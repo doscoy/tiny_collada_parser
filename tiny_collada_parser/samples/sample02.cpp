@@ -2,43 +2,42 @@
 
 
 #include "../tiny_collada_parser.hpp"
-#include <GLUT/GLUT.h>
+#include "multiplatform.hpp"
 
 namespace  {
     
 const tc::Meshes* meshes_ = nullptr;
 
+
+void drawMesh()
+{
+    std::shared_ptr<tc::Mesh> mesh = meshes_->at(0);
+    tc::Mesh::ArrayData* pos = mesh->getVertex();
+
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(pos->stride_, GL_FLOAT, 0, pos->data_.data());
+    glDrawElements(GL_TRIANGLES, pos->indices_.size(), GL_UNSIGNED_INT, pos->indices_.data());
+    glDisableClientState(GL_VERTEX_ARRAY);
+}
+
 void display()
 {
-    printf("disp\n");
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    
-    glBegin(GL_TRIANGLES);
-        glColor3f(1.0f, 1.0f, 1.0f);
-        glVertex3f(0, 0, 0.5);
-        glColor3f(1.0f, 1.0f, 1.0f);
-        glVertex3f(0.5, 0, 0.5);
-        glColor3f(1.0f, 1.0f, 1.0f);
-        glVertex3f(-0.5, 0, -0.5);
-	glEnd();
-    
+    drawMesh();
     glFlush();
 }
 
 
 void reshape(int width, int height)
 {
-    printf("reshape\n");
     glViewport(0, 0, width, height);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	gluPerspective(45.0, (double)width / (double)height, 0.1, 100.0);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(0.5, 2.5, 2.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+	gluLookAt(0.0, 5.5, 5.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 }
 
 }   // unname namespace
@@ -54,8 +53,8 @@ void sample02(
     parser.parse(dae_path);
     meshes_ = parser.meshes();
     int argc = 0;
-
-    glutInit(&argc, nullptr);
+    char* argv[] = {"\0","\0"};
+//    glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
     glutCreateWindow("sample02");
     glutReshapeFunc(reshape);

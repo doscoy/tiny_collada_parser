@@ -6,7 +6,7 @@
 // Include files.
 #include <vector>
 #include <cstdint>
-
+#include <memory>
 
 
 
@@ -62,7 +62,7 @@ private:
 };
 
 class Mesh;
-typedef ::std::vector<uint16_t> Indices;
+typedef ::std::vector<uint32_t> Indices;
 typedef ::std::vector<float> Vertices;
 typedef ::std::vector<::std::shared_ptr<Mesh>> Meshes;
 
