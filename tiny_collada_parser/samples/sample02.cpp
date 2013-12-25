@@ -14,7 +14,9 @@ void drawMesh(std::shared_ptr<tc::Mesh> mesh)
 {
 	//	頂点取得
     tc::Mesh::ArrayData* pos = mesh->getVertex();
-
+	if (!pos) {
+		return;
+	}
 	//	データ設定
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(pos->stride_, GL_FLOAT, 0, pos->data_.data());
@@ -69,7 +71,11 @@ void sample02(
 ) {
     tc::Parser parser;
     //  daeを解析
-    parser.parse(dae_path);
+    tc::Result result = parser.parse(dae_path);
+	if (result.isFailed()) {
+		printf("data parse failed.\n%s\n",dae_path);
+	}
+
     meshes_ = parser.meshes();
 
 	//	gl設定

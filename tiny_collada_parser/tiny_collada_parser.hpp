@@ -100,19 +100,9 @@ public:
 
     };
 
-
 public:
     enum PrimitiveType {
-        LINE,
-        LINE_STRIP,
-        POLYGONS,
-        POLYLIST,
-        TRIANGLES,
-        TRIANGLE_FAN,
-        TRIANGLE_STRIP,
-        
-        PRIMITIVE_TYPE_NUM,
-        
+        PRIMITIVE_TRIANGLES,        
         UNKNOWN_TYPE
     };
     

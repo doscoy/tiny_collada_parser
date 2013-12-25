@@ -17,16 +17,20 @@ namespace xml = tinyxml2;
 
 
 
-
-
-
-
-
-
-
-
-
 namespace {
+
+
+struct PrimitiveSelector
+{
+    const char* name_;
+    tc::Mesh::PrimitiveType type_;
+};
+
+#define PRIMITIVE_TYPE_NUM 2
+const PrimitiveSelector PRIMITIVE_TYPE_SELECT[PRIMITIVE_TYPE_NUM] = {
+    {"triangles", tc::Mesh::PRIMITIVE_TRIANGLES},
+    {"polylist", tc::Mesh::PRIMITIVE_TRIANGLES}
+};
 
 
 const size_t STRING_COMP_SIZE = 64;
@@ -155,25 +159,17 @@ void readSourceNode(
 
 
 //----------------------------------------------------------------------
-//  インデックス読み込み
-const xml::XMLElement* getIndexNode(
+//  プリミティブノード取得
+const xml::XMLElement* getPrimitiveNode(
     const xml::XMLElement* mesh_node
 ) {
     //  どのデータ構造でインデックスをもっているか調査
-    for (int prim_idx = 0; prim_idx < tc::Mesh::PRIMITIVE_TYPE_NUM; ++prim_idx) {
-        const char primitive_types_name[tc::Mesh::PRIMITIVE_TYPE_NUM][15] = {
-            "lines",
-            "linestrips",
-            "polygons",
-            "polylist",
-            "triangles",
-            "trifans",
-            "tristrips"
-        };
+    for (int prim_idx = 0; prim_idx < PRIMITIVE_TYPE_NUM; ++prim_idx) {
 
+        //  読み込めたら存在している
         const xml::XMLElement* primitive_node = firstChildElement(
             mesh_node,
-            primitive_types_name[prim_idx]
+            PRIMITIVE_TYPE_SELECT[prim_idx].name_
         );
 
         if (primitive_node) {
@@ -185,12 +181,35 @@ const xml::XMLElement* getIndexNode(
 }
 
 //----------------------------------------------------------------------
+//  プリミティブタイプ取得
+tc::Mesh::PrimitiveType getPrimitiveType(
+    const xml::XMLElement* mesh_node
+) {
+    //  どのデータ構造でインデックスをもっているか調査
+    for (int prim_idx = 0; prim_idx < PRIMITIVE_TYPE_NUM; ++prim_idx) {
+
+        //  読み込めたら存在している
+        const xml::XMLElement* primitive_node = firstChildElement(
+            mesh_node,
+            PRIMITIVE_TYPE_SELECT[prim_idx].name_
+        );
+
+        if (primitive_node) {
+            return PRIMITIVE_TYPE_SELECT[prim_idx].type_;
+        }
+    }
+
+    return tc::Mesh::UNKNOWN_TYPE;
+}
+
+
+//----------------------------------------------------------------------
 //  インデックス読み込み
 void collectIndices(
     const xml::XMLElement* mesh_node,
     tc::Indices& indices
 ) {        
-    const xml::XMLElement* primitive_node = getIndexNode(mesh_node);
+    const xml::XMLElement* primitive_node = getPrimitiveNode(mesh_node);
 
     //  インデックス値読み込み
     if (primitive_node) {
@@ -239,7 +258,10 @@ void collectMeshInputs(
     const xml::XMLElement* vertices =  firstChildElement(mesh, "vertices");
 
     //  inputノード
-    const xml::XMLElement* target_node = firstChildElement(mesh, target_name);
+    const xml::XMLElement* target_node = getPrimitiveNode(mesh);
+	if (!target_node) {
+		return;
+	}
     const xml::XMLElement* input_node = firstChildElement(target_node, "input");
 
     while (input_node) {
@@ -370,20 +392,27 @@ void parseMeshNode(
     printf("\n\n");
     for (int i = 0; i < sources_.size(); ++i) {
         SourceData* src = &sources_[i];
-        printf("SRC:%s - INPUT:%s\n", src->id_, src->input_->source_);
-        printf("  DATA size %d\n", src->data_.size());
+		if (src->input_) {
+			printf("SRC:%s - INPUT:%s\n", src->id_, src->input_->source_);
+			printf("  DATA size %d\n", src->data_.size());
+		}
     }
     printf("\n\n");
 
 
-    setupMesh(data);
+    setupMesh(mesh_node, data);
     
 }
 
 //----------------------------------------------------------------------
 void setupMesh(
+    const xml::XMLElement* mesh_node,
     ::std::shared_ptr<tc::Mesh> mesh
 ) {
+    //  プリミティブの描画タイプを設定
+    tc::Mesh::PrimitiveType prim_type = getPrimitiveType(mesh_node);
+    mesh->setPrimitiveType(prim_type);
+
     SourceData* pos_source = searchSourceBySemantic("POSITION");
     if (pos_source) {
         printf("pos_source size %d\n", pos_source->data_.size());
@@ -427,17 +456,21 @@ void relateSourcesToInputs()
     std::vector<SourceData>::iterator src_it = sources_.begin();
     std::vector<SourceData>::iterator src_end = sources_.end();
     
-    for (; src_it != src_end; ++src_it) {
-        InputData* input = searchInputBySource(src_it->id_);
-        src_it->input_ = input;
-        TINY_COLLADA_TRACE(" %s -- %s[%s]", src_it->id_, input->semantic_, input->source_);
-        if (src_it->input_) {
-            TINY_COLLADA_TRACE(" OK\n");
-        }
-        else {
-            TINY_COLLADA_TRACE(" NG\n");
-        }
-    }
+
+	while (src_it != src_end) {
+		InputData* input = searchInputBySource(src_it->id_);
+		src_it->input_ = input;
+		
+		TINY_COLLADA_TRACE(" %s", src_it->id_);
+		if (input) {
+			TINY_COLLADA_TRACE(" OK\n");
+			TINY_COLLADA_TRACE("  %s %s", input->semantic_, input->source_);
+		}
+		else {
+			TINY_COLLADA_TRACE(" NG\n");
+		}
+		++src_it;
+	}
 }
     
 //----------------------------------------------------------------------
