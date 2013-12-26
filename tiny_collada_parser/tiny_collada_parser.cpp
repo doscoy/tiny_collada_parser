@@ -19,6 +19,19 @@ namespace xml = tinyxml2;
 
 namespace {
 
+const char* INPUT_NODE_NAME = "input";
+const char* SOURCE_NODE_NAME = "source";
+const char* SEMANTIC_ATTR_NAME = "semantic";
+const char* MESH_NODE_NAME = "mesh";
+const char* GEOMETRY_NODE_NAME = "geometry";
+const char* INDEX_NODE_NAME = "p";
+const char* STRIDE_ATTR_NAME = "stride";
+const char* ACCESSOR_NODE_NAME = "accessor";
+const char* TECH_COMMON_NODE_NAME = "technique_common";
+const char* LIB_GEOMETRY_NODE_NAME = "library_geometries";
+const char* ID_ATTR_NAME = "id";
+const char* OFFSET_ATTR_NAME = "offset";
+const char* VERTICES_NODE_NAME = "vertices";
 
 struct PrimitiveSelector
 {
@@ -96,14 +109,14 @@ uint32_t getStride(
 ){
     const xml::XMLElement* technique_common = firstChildElement(
         source_node, 
-        "technique_common"
+        TECH_COMMON_NODE_NAME
     );
     const xml::XMLElement* accessor = firstChildElement(
         technique_common, 
-        "accessor"
+        ACCESSOR_NODE_NAME
     );
     uint32_t stride;
-    int check = accessor->QueryUnsignedAttribute("stride", &stride);
+    int check = accessor->QueryUnsignedAttribute(STRIDE_ATTR_NAME, &stride);
     if (check == xml::XML_NO_ATTRIBUTE) {
         stride = 1;
     }
@@ -134,13 +147,13 @@ void readSourceNode(
     const xml::XMLElement* const source_node,
     SourceData* out
 ) {
-        
-    char array_types[2][15] = {
+    const int ARRAY_TYPE_MAX = 2;
+    char array_types[ARRAY_TYPE_MAX][15] = {
         "float_array",
         "int_array"
     };
         
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < ARRAY_TYPE_MAX; ++i) {
         const xml::XMLElement* array_node = firstChildElement(
             source_node, 
             array_types[i]
@@ -202,6 +215,48 @@ tc::Mesh::PrimitiveType getPrimitiveType(
     return tc::Mesh::UNKNOWN_TYPE;
 }
 
+//----------------------------------------------------------------------
+//  プリミティブのinput数を取得
+int getPrimitiveInputCount(
+    const xml::XMLElement* mesh_node
+) {
+    
+    //  どのデータ構造でインデックスをもっているか調査
+    const xml::XMLElement* primitive_node = nullptr;
+    for (int prim_idx = 0; prim_idx < PRIMITIVE_TYPE_NUM; ++prim_idx) {
+
+        //  読み込めたら存在している
+        primitive_node = firstChildElement(
+            mesh_node,
+            PRIMITIVE_TYPE_SELECT[prim_idx].name_
+        );
+
+        if (primitive_node) {
+            break;
+        }
+    }
+
+    if (!primitive_node) {
+        //  プリミティブ存在しない
+        return 0;
+    }
+
+    //  あった
+    //  input数を取得
+    //  読み込めたら存在している
+    const xml::XMLElement* input = firstChildElement(
+        primitive_node,
+        INPUT_NODE_NAME
+    );
+    int count = 0;
+    while(input) {
+        ++count;
+        input = input->NextSiblingElement(INPUT_NODE_NAME);
+    }
+
+
+    return count;
+}
 
 //----------------------------------------------------------------------
 //  インデックス読み込み
@@ -213,7 +268,7 @@ void collectIndices(
 
     //  インデックス値読み込み
     if (primitive_node) {
-        char* text = const_cast<char*>(primitive_node->FirstChildElement("p")->GetText());
+        char* text = const_cast<char*>(primitive_node->FirstChildElement(INDEX_NODE_NAME)->GetText());
        readArray(text, &indices);
     }
     
@@ -229,11 +284,11 @@ void collectMeshSources(
     const xml::XMLElement* mesh
 ){
     //  ソースノードを総なめして情報を保存
-    const xml::XMLElement* target = firstChildElement(mesh, "source");
+    const xml::XMLElement* target = firstChildElement(mesh, SOURCE_NODE_NAME);
     while (target) {
         SourceData data;
         //  ID保存
-        data.id_ = getElementAttribute(target, "id");
+        data.id_ = getElementAttribute(target, ID_ATTR_NAME);
         
         //  配列データ保存
         readSourceNode(target, &data);
@@ -242,7 +297,7 @@ void collectMeshSources(
         out.push_back(data);
         
         //  次へ
-        target = target->NextSiblingElement("source");
+        target = target->NextSiblingElement(SOURCE_NODE_NAME);
     }
 }
 
@@ -251,23 +306,22 @@ void collectMeshSources(
 //  インプット情報を取得
 void collectMeshInputs(
     std::vector<InputData>& out,
-    const xml::XMLElement* mesh,
-    const char* const target_name
+    const xml::XMLElement* mesh
 ){
     //  verticesノードのインプットとの２重連携の為に
-    const xml::XMLElement* vertices =  firstChildElement(mesh, "vertices");
+    const xml::XMLElement* vertices =  firstChildElement(mesh, VERTICES_NODE_NAME);
 
     //  inputノード
     const xml::XMLElement* target_node = getPrimitiveNode(mesh);
 	if (!target_node) {
 		return;
 	}
-    const xml::XMLElement* input_node = firstChildElement(target_node, "input");
+    const xml::XMLElement* input_node = firstChildElement(target_node, INPUT_NODE_NAME);
 
     while (input_node) {
         InputData input;
         //  sourceアトリビュートを取得
-        const char* attr_source = getElementAttribute(input_node, "source");
+        const char* attr_source = getElementAttribute(input_node, SOURCE_NODE_NAME);
         //  source_nameの先頭の#を取る
         if (attr_source[0] == '#') {
             attr_source = &attr_source[1];
@@ -275,11 +329,11 @@ void collectMeshInputs(
 
         //  verticesノードのinputで置き換えるべきものか判定
         if (vertices) {
-            const char* vertices_id = getElementAttribute(vertices, "id");
+            const char* vertices_id = getElementAttribute(vertices, ID_ATTR_NAME);
             if (std::strncmp(attr_source, vertices_id, STRING_COMP_SIZE) == 0) {
-                const xml::XMLElement* vert_input_node = firstChildElement(vertices, "input");
+                const xml::XMLElement* vert_input_node = firstChildElement(vertices, INPUT_NODE_NAME);
                 //  verticesノードのinputで置き換える
-                const char* vert_source = getElementAttribute(vert_input_node, "source");
+                const char* vert_source = getElementAttribute(vert_input_node, SOURCE_NODE_NAME);
                 //  source_nameの先頭の#を取る
                 if (vert_source[0] == '#') {
                     vert_source = &vert_source[1];
@@ -287,7 +341,7 @@ void collectMeshInputs(
                 attr_source = vert_source;
 
                 //  semanticも保存しておく
-                input.semantic_ = getElementAttribute(vert_input_node, "semantic");
+                input.semantic_ = getElementAttribute(vert_input_node, SEMANTIC_ATTR_NAME);
             }
 
         }
@@ -297,11 +351,11 @@ void collectMeshInputs(
         //  semanticアトリビュートを取得
         if (!input.semantic_) {
             //  verticesとのリレーションが既にはられてなければinputのsemanticを使用
-            input.semantic_ = getElementAttribute(input_node, "semantic");
+            input.semantic_ = getElementAttribute(input_node, SEMANTIC_ATTR_NAME);
         }
 
         //  offsetアトリビュートを取得
-        const char* attr_offset = getElementAttribute(input_node, "offset");
+        const char* attr_offset = getElementAttribute(input_node, OFFSET_ATTR_NAME);
         int offset = 0;
         if (attr_offset) {
             offset = atoi(attr_offset);
@@ -311,7 +365,7 @@ void collectMeshInputs(
 
         out.push_back(input);
         //  次へ
-        input_node = input_node->NextSiblingElement("input");
+        input_node = input_node->NextSiblingElement(INPUT_NODE_NAME);
     }
 }
 
@@ -350,23 +404,23 @@ Result parseCollada(
     const xml::XMLElement* root_node = doc->RootElement();
     const xml::XMLElement* library_geometries_node = firstChildElement(
         root_node,
-        "library_geometries"
+        LIB_GEOMETRY_NODE_NAME
     );
     const xml::XMLElement* geometry_node = firstChildElement(
         library_geometries_node,
-        "geometry"
+        GEOMETRY_NODE_NAME
     );
     
     while (geometry_node) {
         //  メッシュデータ解析
         std::shared_ptr<Mesh> data = std::make_shared<Mesh>();
-        const xml::XMLElement* mesh_node = firstChildElement(geometry_node, "mesh");
+        const xml::XMLElement* mesh_node = firstChildElement(geometry_node, MESH_NODE_NAME);
         
         parseMeshNode(mesh_node, data);
         meshes_.push_back(data);
         
         //  次のジオメトリ
-        geometry_node = geometry_node->NextSiblingElement("geometry");
+        geometry_node = geometry_node->NextSiblingElement(GEOMETRY_NODE_NAME);
     }
     
     return Result::Code::SUCCESS;
@@ -385,7 +439,7 @@ void parseMeshNode(
     collectMeshSources(sources_, mesh_node);
     
     //  インプットノードの情報保存
-    collectMeshInputs(inputs_, mesh_node, "polylist");
+    collectMeshInputs(inputs_, mesh_node);
     
     //  ソースとインプットを関連付け
     relateSourcesToInputs();
@@ -413,12 +467,14 @@ void setupMesh(
     tc::Mesh::PrimitiveType prim_type = getPrimitiveType(mesh_node);
     mesh->setPrimitiveType(prim_type);
 
+    int offset_count = getPrimitiveInputCount(mesh_node);
+
     SourceData* pos_source = searchSourceBySemantic("POSITION");
     if (pos_source) {
         printf("pos_source size %d\n", pos_source->data_.size());
         mesh->vertex_.data_ = pos_source->data_;
         mesh->vertex_.stride_ = pos_source->stride_;
-        setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, 2);
+        setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
     }
     
     SourceData* normal_source = searchSourceBySemantic("NORMAL");
@@ -426,7 +482,7 @@ void setupMesh(
         printf("normal_source size %d\n", normal_source->data_.size());
         mesh->normal_.data_ = normal_source->data_;
         mesh->normal_.stride_ = normal_source->stride_;
-        setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, 2);
+        setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
     }
 }
 
