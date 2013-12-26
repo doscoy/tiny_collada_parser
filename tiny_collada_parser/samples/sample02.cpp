@@ -44,7 +44,7 @@ void display()
 	glLoadIdentity();
 	gluLookAt(0.0, 5.5, 5.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
-	//	メッシュ描画B
+	//	メッシュ描画
 	drawMesh(mesh);
 
 	glFlush();
@@ -74,6 +74,7 @@ void sample02(
     tc::Result result = parser.parse(dae_path);
 	if (result.isFailed()) {
 		printf("data parse failed.\n%s\n",dae_path);
+        return;
 	}
 
     meshes_ = parser.meshes();

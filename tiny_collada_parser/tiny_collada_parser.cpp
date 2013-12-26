@@ -32,6 +32,8 @@ const char* LIB_GEOMETRY_NODE_NAME = "library_geometries";
 const char* ID_ATTR_NAME = "id";
 const char* OFFSET_ATTR_NAME = "offset";
 const char* VERTICES_NODE_NAME = "vertices";
+const char* COUNT_ATTR_NAME = "count";
+
 
 struct PrimitiveSelector
 {
@@ -161,11 +163,20 @@ void readSourceNode(
         if (!array_node) {
             continue;
         }
-            
+        //  データのストライドを取得
         out->stride_ = getStride(source_node);
 
         char* text = const_cast<char*>(array_node->GetText());
-            
+        //  データ数分のメモリをあらかじめリザーブ
+        size_t data_count = 0;
+        const char* count_str = getElementAttribute(array_node, COUNT_ATTR_NAME);
+        if (count_str) {
+            data_count = std::atoi(count_str);
+        }
+        printf("reserve %d\n", data_count);
+        out->data_.reserve(data_count);
+
+        //  データ取得
         readArray(text, &out->data_);
     }
 }
@@ -273,6 +284,23 @@ void collectIndices(
     }
     
     TINY_COLLADA_TRACE("Collect index size = %lu\n", indices.size());
+}
+
+//----------------------------------------------------------------------
+//  面の頂点数読み込み
+void collectFaceCount(
+    const xml::XMLElement* mesh_node,
+    std::vector<char>& face_count
+) {        
+    const xml::XMLElement* primitive_node = getPrimitiveNode(mesh_node);
+
+    //  インデックス値読み込み
+    if (primitive_node) {
+        char* text = const_cast<char*>(primitive_node->FirstChildElement("vcount")->GetText());
+       readArray(text, &face_count);
+    }
+    
+    TINY_COLLADA_TRACE("Collect face count size = %lu\n", face_count.size());
 }
 
 
@@ -421,6 +449,7 @@ Result parseCollada(
         
         //  次のジオメトリ
         geometry_node = geometry_node->NextSiblingElement(GEOMETRY_NODE_NAME);
+        break;
     }
     
     return Result::Code::SUCCESS;
@@ -434,7 +463,8 @@ void parseMeshNode(
 ) {
     //  インデックス情報保存
     collectIndices(mesh_node, raw_indices_);
-    
+    collectFaceCount(mesh_node, face_count_);
+
     //  ソースノードの情報保存
     collectMeshSources(sources_, mesh_node);
     
@@ -474,7 +504,12 @@ void setupMesh(
         printf("pos_source size %d\n", pos_source->data_.size());
         mesh->vertex_.data_ = pos_source->data_;
         mesh->vertex_.stride_ = pos_source->stride_;
-        setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
+        if (face_count_.empty()) {
+            setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
+        }
+        else {
+            setupIndicesMultiFace(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
+        }
     }
     
     SourceData* normal_source = searchSourceBySemantic("NORMAL");
@@ -482,7 +517,12 @@ void setupMesh(
         printf("normal_source size %d\n", normal_source->data_.size());
         mesh->normal_.data_ = normal_source->data_;
         mesh->normal_.stride_ = normal_source->stride_;
-        setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
+        if (face_count_.empty()) {
+            setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
+        }
+        else {
+            setupIndicesMultiFace(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
+        }
     }
 }
 
@@ -499,9 +539,56 @@ void setupIndices(
     for (int i = start_offset; i < raw_indices_.size(); i += stride) {
         out.push_back(raw_indices_.at(i));
     }
-    TINY_COLLADA_TRACE("get size = %lu\n", out.size());
+    TINY_COLLADA_TRACE("index size = %lu\n", out.size());
 }
 
+//----------------------------------------------------------------------
+//  事前に抜いておいたインデックス一覧からインデックスのセットアップ2
+void setupIndicesMultiFace(
+    Indices& out,
+    int start_offset,
+    int stride
+) {
+    int idx = start_offset;
+    for (int i = 0; i < face_count_.size(); ++ i) {
+        int vcnt = face_count_.at(i);
+
+        if (vcnt == 3) {
+            uint32_t idx1 = raw_indices_.at(idx);
+            idx += stride;
+            uint32_t idx2 = raw_indices_.at(idx);
+            idx += stride;
+            uint32_t idx3 = raw_indices_.at(idx);
+            idx += stride;
+            out.push_back(idx1);
+            out.push_back(idx2);
+            out.push_back(idx3);
+
+        }
+        else if (vcnt == 4) {
+            uint32_t idx1 = raw_indices_.at(idx);
+            idx += stride;
+            uint32_t idx2 = raw_indices_.at(idx);
+            idx += stride;
+            uint32_t idx3 = raw_indices_.at(idx);
+            idx += stride;
+            uint32_t idx4 = raw_indices_.at(idx);
+            idx += stride;
+
+            out.push_back(idx1);
+            out.push_back(idx2);
+            out.push_back(idx3);
+
+            out.push_back(idx1);
+            out.push_back(idx3);
+            out.push_back(idx4);
+        }
+
+        
+        
+    }
+
+}
 
     
 //----------------------------------------------------------------------
@@ -509,8 +596,8 @@ void setupIndices(
 void relateSourcesToInputs()
 {
     TINY_COLLADA_TRACE("%s\n", __FUNCTION__);
-    std::vector<SourceData>::iterator src_it = sources_.begin();
-    std::vector<SourceData>::iterator src_end = sources_.end();
+    auto src_it = sources_.begin();
+    auto src_end = sources_.end();
     
 
 	while (src_it != src_end) {
@@ -577,6 +664,7 @@ const Meshes* getMeshList() const {
 private:
     Indices raw_indices_;
     Meshes meshes_;
+    std::vector<char> face_count_;
     std::vector<SourceData> sources_;
     std::vector<InputData> inputs_;
 
