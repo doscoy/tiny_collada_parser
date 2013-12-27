@@ -4,9 +4,11 @@
 
 
 
-#ifdef _MSC_VER // msvc
+#ifdef _MSC_VER  // msvc
     #include <gl/glut.h>
-#elif   //mac
+#endif
+
+#ifdef __APPLE__ //mac
     //  mac用
     #include <GLUT/GLUT.h>
 #endif

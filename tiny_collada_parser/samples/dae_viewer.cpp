@@ -7,7 +7,7 @@
 namespace  {
     
 const tc::Meshes* meshes_ = nullptr;
-float zoom_ = 35;
+float zoom_ = 255;
 
 //----------------------------------------------------------------------
 //	
@@ -106,7 +106,7 @@ void dae_viewer(
 	//	gl設定
     int argc = 0;
     char* argv[] = {"\0","\0"};
-//    glutInit(&argc, argv);
+    glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
     glutCreateWindow("sample02");
     glutReshapeFunc(reshape);
