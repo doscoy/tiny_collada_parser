@@ -9,7 +9,9 @@ COLLADAファイルに定義された頂点情報、法線、UV、マテリア�
 
 利用方法
 ---------------------
-tiny_collada_parser.cppとtiny_collada_parser.hppの２つを利用したい環境に追加して下さい。
+tiny_collada_parser.cppとtiny_collada_parser.hppの２つのファイルと、third_party_libフォルダの中身を、あなたのプロジェクトに追加して下さい。
+
+
 
 
 
