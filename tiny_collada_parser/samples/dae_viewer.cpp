@@ -6,7 +6,7 @@
 
 namespace  {
     
-const tc::Meshes* meshes_ = nullptr;
+const tc::ColladaScenes* scenes_ = nullptr;
 float zoom_ = 4;
 float height_ = 1;
 const float ZOOM_VALUE = 2.0f;
@@ -147,46 +147,58 @@ void display()
     static GLfloat lightPosition[4] = {0, 20, 0, 0.0f};
 	static GLfloat lightDiffuse[3] = {1.0f, 1.0f, 1.0f};
 
-    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
-	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
 
-
-    //  ライト設定
+	gluLookAt(0.0, zoom_ - height_, zoom_, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
     glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
-	gluLookAt(0.0, zoom_ - height_, zoom_, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
     
 	//	カメラ設定
 	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+
+
+    //  ライト設定
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+
     static float rot;
     rot += 0.8f;
-    glRotatef(rot, 0, 1, 0);
-
-
+        
 
 	//	メッシュ描画
-    
-//    glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    int mesh_count = meshes_->size();
-    for (int i = 0; i < mesh_count; ++i) {
-        std::shared_ptr<const tc::ColladaMesh> m = meshes_->at(i);
-        drawMesh(m);
+    int scene_count = scenes_->size();
+    for (int i = 0; i < scene_count; ++i) {
+        std::shared_ptr<const tc::ColladaScene> s = scenes_->at(i);
+        std::shared_ptr<const tc::ColladaMaterial> material = s->material_;
+
+        //  マテリアル設定
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, material->diffuse_.data());
+        glMaterialfv(GL_FRONT, GL_AMBIENT, material->ambient_.data());
+
+        //  マトリックス
+        glLoadMatrixf(s->matrix_.data());
+
+        const tc::ColladaMeshes& ms = s->meshes_;
+        for (int j = 0; j < ms.size(); ++j) {
+            drawMesh(ms[j]);
+        }
+
     }
 
     glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
     glDisable(GL_LIGHTING);
     glDisable(GL_LIGHT0);
     
-#if 1
-    for (int i = 0; i < mesh_count; ++i) {
-        std::shared_ptr<const tc::ColladaMesh> m = meshes_->at(i);
-        
-        int vertex_count = m->getVertex()->data_.size() / 3;
-        for (int j = 0; j < vertex_count; ++j) {
-            vec3_t pos = getVertexData(m->getVertex() ,j);
-            vec3_t nor = getVertexData(m->getNormals(), j);
-            drawLine(pos, nor);
+#if 0
+    for (int i = 0; i < scene_count; ++i) {
+        std::shared_ptr<const tc::ColladaScene> s = scenes_->at(i);
+        const tc::ColladaMeshes& ms = s->meshes_;
+        for (int j = 0; j < ms.size(); ++j) {        
+            int vertex_count = ms[j]->getVertex()->data_.size() / 3;
+            for (int k = 0; k < vertex_count; ++k) {
+                vec3_t pos = getVertexData(ms[j]->getVertex() ,k);
+                vec3_t nor = getVertexData(ms[j]->getNormals(), k);
+                drawLine(pos, nor);
+            }
         }
     
     }
@@ -229,12 +241,12 @@ void dae_viewer(
         return;
 	}
 
-    meshes_ = parser.meshes();
+    scenes_ = parser.scenes();
 
 	//	gl設定
     int argc = 0;
     char* argv[] = {"\0","\0"};
-    glutInit(&argc, argv);
+//    glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
     glutCreateWindow("sample02");
     glutReshapeFunc(reshape);

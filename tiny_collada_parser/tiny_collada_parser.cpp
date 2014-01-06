@@ -122,17 +122,17 @@ struct EffectData
 {
     void dump() {
         printf("EffectData: id = %s\n", id_);
-        material_.dump();
+        material_->dump();
     }
 
     EffectData()
         : id_(nullptr)
-        , material_()
+        , material_(nullptr)
     {}
 
 
     const char* id_;
-    tc::ColladaMaterial material_;
+    std::shared_ptr<tc::ColladaMaterial> material_;
 };
 using Effects = std::vector<std::shared_ptr<EffectData>>;
 
@@ -520,7 +520,7 @@ void parseEffect(
     if (emission) {
         const xml::XMLElement* color = firstChildElement(emission, "color");
         const char* text = color->GetText();
-        readArray(text, &ef->material_.emission_);
+        readArray(text, &ef->material_->emission_);
     }
     
     //  アンビエント
@@ -528,7 +528,7 @@ void parseEffect(
     if (ambient) {
         const xml::XMLElement* color = firstChildElement(ambient, "color");
         const char* text = color->GetText();
-        readArray(text, &ef->material_.ambient_);
+        readArray(text, &ef->material_->ambient_);
     
     }
 
@@ -537,7 +537,7 @@ void parseEffect(
     if (diffuse) {
         const xml::XMLElement* color = firstChildElement(diffuse, "color");
         const char* text = color->GetText();
-        readArray(text, &ef->material_.diffuse_);
+        readArray(text, &ef->material_->diffuse_);
     
     }
 
@@ -546,7 +546,7 @@ void parseEffect(
     if (specular) {
         const xml::XMLElement* color = firstChildElement(specular, "color");
         const char* text = color->GetText();
-        readArray(text, &ef->material_.specular_);
+        readArray(text, &ef->material_->specular_);
     
     }
 
@@ -555,7 +555,7 @@ void parseEffect(
     if (reflective) {
         const xml::XMLElement* color = firstChildElement(reflective, "color");
         const char* text = color->GetText();
-        readArray(text, &ef->material_.reflective_);
+        readArray(text, &ef->material_->reflective_);
     
     }
     
@@ -566,7 +566,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(reflectivity, "float");
         const char* val = data->GetText();
 
-        ef->material_.reflectivity_ = atof(val);
+        ef->material_->reflectivity_ = atof(val);
     }
 
     //  シャイネス
@@ -575,7 +575,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(shininess, "float");
         const char* val = data->GetText();
 
-        ef->material_.shininess_ = atof(val);
+        ef->material_->shininess_ = atof(val);
     }
     
     //  透明度
@@ -584,7 +584,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(transparency, "float");
         const char* val = data->GetText();
 
-        ef->material_.transparency_ = atof(val);
+        ef->material_->transparency_ = atof(val);
     }
 
 }
@@ -608,13 +608,14 @@ void collectEffectNode(
         const xml::XMLElement* technique = firstChildElement(profile_common, "technique");
 
         std::shared_ptr<EffectData> ed = std::make_shared<EffectData>();
+        ed->material_ = std::make_shared<tc::ColladaMaterial>();
         ed->id_ = getElementAttribute(effect, "id");
 
         for (int shade_idx = 0; shade_idx < 3; ++shade_idx) {
             const xml::XMLElement* shading = firstChildElement(technique, SHADING_NAME[shade_idx]);
             if (shading) {
                 //  シェーディング
-                ed->material_.shading_name_ = SHADING_NAME[shade_idx];
+                ed->material_->shading_name_ = SHADING_NAME[shade_idx];
                 parseEffect(ed, shading);
                 break;
             }
@@ -748,8 +749,56 @@ void collectMeshInputs(
     collectInputNodeData(out, vert_input_node);
 }
 
+std::shared_ptr<tc::ColladaMaterial> searchMaterial(
+    const char* bind_material,
+    const Materials& materials,
+    const Effects& effects
+) {
+    //  マテリアルを探す
+    const char* effect_url = nullptr;
+    for (int i = 0; i < materials.size(); ++i) {
+        if (std::strncmp(materials[i]->id_, bind_material, 64) == 0) {
+            //  あった
+            effect_url = materials[i]->url_;
+            break;
+        }
+    }
+
+    if (!effect_url) {
+        //  指定マテリアルは存在しなかった
+        return nullptr;
+    }
+
+    //  エフェクトを探す
+    std::shared_ptr<tc::ColladaMaterial> mat = nullptr;
+    for (int i = 0; i < effects.size(); ++i) {
+        if (std::strncmp(effect_url, effects[i]->id_, 64) == 0) {
+            //  あった
+            mat = effects[i]->material_;
+        }
+    }
 
 
+    
+    return mat;
+}
+
+
+
+void transposeMatrix(std::vector<float>& mtx)
+{
+    for (int x = 0; x < 4; ++x) {
+        for (int y = x; y < 4;++y) {
+            if (x == y) {
+                continue;
+            }
+            int xy = x * 4 + y;
+            int yx = y * 4 + x;
+            std::swap(mtx[xy], mtx[yx]);
+        }
+    }
+
+}
 
 }   // unname namespace
 
@@ -762,7 +811,7 @@ class Parser::Impl
 {
 public:
 Impl()
-    : meshes_()
+    : scenes_()
 {
 }
 
@@ -835,10 +884,11 @@ Result parseCollada(
         std::shared_ptr<ColladaScene> scene = std::make_shared<ColladaScene>();
 
         //  マトリックス登録
+        transposeMatrix(vs->matrix_);
         scene->matrix_ = vs->matrix_;
-        
+        scenes_.push_back(scene);
         //  マテリアル設定
-    
+        scene->material_ = searchMaterial(vs->bind_material_, materials, effects);
     
         //  メッシュ情報生成
         while (geometry) {
@@ -872,12 +922,9 @@ Result parseCollada(
                         TINY_COLLADA_ASSERT(visize == nisize);
                     }
                 }
-            
-//                data->material_name_ = vs->bind_material_;
-
 
                 //  データ登録
-                meshes_.push_back(data);
+//                meshes_.push_back(data);
                 scene->meshes_.push_back(data);
                 
                 //  次へ
@@ -1119,10 +1166,10 @@ void relateSourcesToInputs(
 
 //----------------------------------------------------------------------
 //  メッシュリスト取得
-const Meshes* getMeshList() const {
+//const Meshes* getMeshList() const {
     
-    return &meshes_;
-}
+//    return &meshes_;
+//}
 
 const ColladaScenes* getScenes() const {
     return &scenes_;
@@ -1131,7 +1178,7 @@ const ColladaScenes* getScenes() const {
 
 private:
     ColladaScenes scenes_;
-    Meshes meshes_;
+//    Meshes meshes_;
 };  // class Parser::Impl
 
 
@@ -1172,10 +1219,10 @@ Result Parser::parse(
 }
 
     
-const Meshes* Parser::meshes() const
-{
-    return impl_->getMeshList();
-}
+//const Meshes* Parser::meshes() const
+//{
+//    return impl_->getMeshList();
+//}
 
 const ColladaScenes* Parser::scenes() const
 {

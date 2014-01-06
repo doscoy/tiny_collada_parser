@@ -224,10 +224,20 @@ public:
     PrimitiveType primitive_type_;
     std::shared_ptr<ColladaMaterial> material_;
 };
+using ColladaMeshes = std::vector<std::shared_ptr<ColladaMesh>>;
+
 
 //  シーン情報
-class ColladaScene
+class ColladaScene final
 {
+public:
+    void dump(){
+        if (material_) {
+            material_->dump();
+        }
+    }
+
+
 public:
     std::vector<float> matrix_;
     std::vector<std::shared_ptr<ColladaMesh>> meshes_;
@@ -247,7 +257,7 @@ public:
 public:
     Result parse(const char* const dae_file_path);
     
-    const Meshes* meshes() const;
+//    const Meshes* meshes() const;
     const ColladaScenes* scenes() const;
 private:
     class Impl;

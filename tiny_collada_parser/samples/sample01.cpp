@@ -14,12 +14,13 @@ void sample01(
     parser.parse(dae_path);
 
     //  解析結果取得
-    const tc::Meshes* meshes = parser.meshes();
-    printf("mesh list = %lu\n", meshes->size());
+    const tc::ColladaScenes* scenes = parser.scenes();
+    printf("mesh list = %lu\n", scenes->size());
     
     
-    for (int mesh_idx = 0; mesh_idx < meshes->size(); ++mesh_idx) {
-        std::shared_ptr<tc::ColladaMesh> mesh = meshes->at(mesh_idx);
-        mesh->dump();
+    for (int scene_idx = 0; scene_idx < scenes->size(); ++scene_idx) {
+        std::shared_ptr<tc::ColladaScene> scene = scenes->at(scene_idx);
+        scene->dump();
     }
 }
+
