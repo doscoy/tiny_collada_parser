@@ -19,7 +19,7 @@ void sample01(
     
     
     for (int mesh_idx = 0; mesh_idx < meshes->size(); ++mesh_idx) {
-        std::shared_ptr<tc::Mesh> mesh = meshes->at(mesh_idx);
+        std::shared_ptr<tc::ColladaMesh> mesh = meshes->at(mesh_idx);
         mesh->dump();
     }
 }

@@ -2,13 +2,22 @@
 
 #include "tiny_collada_parser.hpp"
 #include "third_party_libs/tinyxml2/tinyxml2.h"
-
-
+#include <cassert>
 
 #if 1
-#define TINY_COLLADA_TRACE(...)         ::std::printf(__VA_ARGS__)
+    #define TINY_COLLADA_DEBUG  1
 #else
-#define TINY_COLLADA_TRACE(...)         (void)0
+    #define TYNE_COLLADA_DEBUG  0
+#endif
+
+
+#if TINY_COLLADA_DEBUG
+    #define TINY_COLLADA_TRACE(...)         ::std::printf(__VA_ARGS__)
+    #define TINY_COLLADA_ASSERT(exp)        assert(exp)
+#else
+
+    #define TINY_COLLADA_TRACE(...)         (void)0
+    #define TINY_COLLADA_ASSERT(exp)        (void)0
 #endif
 
 
@@ -35,22 +44,101 @@ const char* VERTICES_NODE_NAME = "vertices";
 const char* COUNT_ATTR_NAME = "count";
 
 
+//======================================================================
 struct PrimitiveSelector
 {
     const char* name_;
-    tc::Mesh::PrimitiveType type_;
+    tc::ColladaMesh::PrimitiveType type_;
 };
 
 #define PRIMITIVE_TYPE_NUM 2
 const PrimitiveSelector PRIMITIVE_TYPE_SELECT[PRIMITIVE_TYPE_NUM] = {
-    {"triangles", tc::Mesh::PRIMITIVE_TRIANGLES},
-    {"polylist", tc::Mesh::PRIMITIVE_TRIANGLES}
+    {"triangles", tc::ColladaMesh::PRIMITIVE_TRIANGLES},
+    {"polylist", tc::ColladaMesh::PRIMITIVE_TRIANGLES}
 };
 
 
 const size_t STRING_COMP_SIZE = 64;
 
 
+
+//======================================================================
+//  visual_sceneノードデータ
+struct VisualSceneData
+{
+    VisualSceneData()
+        : type_(TYPE_UNKNOWN)
+        , url_(nullptr)
+        , matrix_()
+        , bind_material_(nullptr)
+    {}
+
+
+    void dump() {
+        printf("VisualSceneNode:type = %d ", type_);
+        if (url_) {
+            printf("url = %s ", url_);
+        }
+        if (bind_material_) {
+            printf("bind_material = %s", bind_material_);
+        }
+        printf(" matrix (%d)", matrix_.size());
+        for (int i = 0; i < matrix_.size(); ++i) {
+            if ((i % 4) == 0) {
+                printf("\n");
+            }
+            printf(" %f", matrix_[i]);
+        }
+        printf("\n");
+    }
+
+    enum Type {
+        TYPE_GEOMETRY,
+        TYPE_UNKNOWN,
+    };
+    Type type_;
+    const char* url_;
+    std::vector<float> matrix_;
+    const char* bind_material_;
+};
+using VisualScenes = std::vector<std::shared_ptr<VisualSceneData>>;
+
+//======================================================================
+//  material
+struct MaterialData
+{
+    const char* id_;
+    const char* url_;
+    
+    void dump() {
+        printf("MaterialData:id %s  url %s\n", id_, url_);
+    }
+};
+using Materials = std::vector<std::shared_ptr<MaterialData>>;
+
+//======================================================================
+//  material effect
+struct EffectData
+{
+    void dump() {
+        printf("EffectData: id = %s\n", id_);
+        material_.dump();
+    }
+
+    EffectData()
+        : id_(nullptr)
+        , material_()
+    {}
+
+
+    const char* id_;
+    tc::ColladaMaterial material_;
+};
+using Effects = std::vector<std::shared_ptr<EffectData>>;
+
+
+
+//======================================================================
 //  インプットデータ
 struct InputData
 {
@@ -60,11 +148,24 @@ struct InputData
         , offset_(0)
     {}
     
+    void dump() {
+        printf("InputData:semantic = ");
+        if (semantic_) {
+            printf(semantic_);
+        }
+        printf("  source = ");
+        if (source_) {
+            printf(source_);
+        }
+        printf("  offset = %d\n", offset_);
+    }
+    
     const char* semantic_;
     const char* source_;
     int offset_;
 };
     
+//======================================================================
 //  ソースデータ
 struct SourceData
 {
@@ -75,12 +176,99 @@ struct SourceData
         , input_(nullptr)
     {}
     
+    void dump() {
+        printf("SourceData:id = %s  stride = %d\n", id_, stride_);
+    }
+    
     const char* id_;
     uint32_t stride_;
     std::vector<float> data_;
     InputData* input_;
 };
+
+
+
+//======================================================================
+//  メッシュ情報
+struct MeshInformation {
+
+//----------------------------------------------------------------------
+//  指定idのinputを探す
+InputData* searchInputBySource(
+    const char* const id
+) {
+    for (int i = 0; i < inputs_.size(); ++i) {
+        InputData* input = &inputs_[i];
+        printf("search %s == %s\n", id, input->source_);
+        if (std::strncmp(input->source_, id, STRING_COMP_SIZE) == 0){
+            return input;
+        }
+    }
+    return nullptr;
+}
     
+//----------------------------------------------------------------------
+//  指定semanticのsourceを探す
+SourceData* searchSourceBySemantic(
+    const char* const semantic
+) {
+    size_t sources_size = sources_.size();
+    printf("\nsearchSourceBySemantic %s %d\n", semantic, sources_size);
+    for (int i = 0; i < sources_size; ++i) {
+        SourceData* source = &sources_[i];
+        InputData* input = source->input_;
+        if (!input) {
+            printf("no input - %s\n", source->id_);
+            continue;
+        }
+        printf("  %s %s\n", input->semantic_, input->source_);   
+        if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE) == 0) {
+            TINY_COLLADA_TRACE("%s - %s [%s] FOUND.\n", __FUNCTION__, semantic, input->source_);
+            return source;
+        }
+    }
+    TINY_COLLADA_TRACE("%s - %s NOT FOUND.\n", __FUNCTION__, semantic);
+        
+    return nullptr;
+}
+
+//----------------------------------------------------------------------
+//  inputのインデックスオフセット幅を取得
+int getIndexStride() const
+{
+    int max_offset = 0;
+    for (int i = 0; i < inputs_.size(); ++i) {
+        int offset = inputs_[i].offset_;
+        if (offset > max_offset) {
+            max_offset = offset;
+        }
+    }
+
+    return max_offset + 1;
+}
+
+//----------------------------------------------------------------------
+//  データ表示
+void dump()
+{
+    
+    for (int i = 0; i < sources_.size(); ++i) {
+        sources_[i].dump();
+    }
+
+    for (int i = 0; i < inputs_.size(); ++i) {
+        inputs_[i].dump();
+    }
+
+}
+
+tc::Indices raw_indices_;
+std::vector<char> face_count_;
+std::vector<SourceData> sources_;
+std::vector<InputData> inputs_;
+    
+};
+
 
 
 //----------------------------------------------------------------------
@@ -90,6 +278,7 @@ const xml::XMLElement* firstChildElement(
     const xml::XMLElement* parent,
     const char* const child_name
 ) {
+    TINY_COLLADA_ASSERT(parent);
     const xml::XMLElement* child = parent->FirstChildElement(child_name);
     return child;
 }
@@ -101,6 +290,7 @@ const char* getElementAttribute(
     const xml::XMLElement* element,
     const char* const attri_name
 ) {
+    TINY_COLLADA_ASSERT(element);
     return element->Attribute(attri_name);
 }
 
@@ -131,10 +321,10 @@ uint32_t getStride(
 //  配列データ読み込み
 template <typename T>
 void readArray(
-    char* text,
+    const char* text,
     std::vector<T>* container
 ){
-    char* value_str = std::strtok(text, " ");
+    char* value_str = std::strtok(const_cast<char*>(text), " ");
     while (value_str) {
         T v = static_cast<T>(atof(value_str));
         container->push_back(v);
@@ -166,7 +356,7 @@ void readSourceNode(
         //  データのストライドを取得
         out->stride_ = getStride(source_node);
 
-        char* text = const_cast<char*>(array_node->GetText());
+        const char* text = array_node->GetText();
         //  データ数分のメモリをあらかじめリザーブ
         size_t data_count = 0;
         const char* count_str = getElementAttribute(array_node, COUNT_ATTR_NAME);
@@ -206,7 +396,7 @@ const xml::XMLElement* getPrimitiveNode(
 
 //----------------------------------------------------------------------
 //  プリミティブタイプ取得
-tc::Mesh::PrimitiveType getPrimitiveType(
+tc::ColladaMesh::PrimitiveType getPrimitiveType(
     const xml::XMLElement* mesh_node
 ) {
     //  どのデータ構造でインデックスをもっているか調査
@@ -223,51 +413,221 @@ tc::Mesh::PrimitiveType getPrimitiveType(
         }
     }
 
-    return tc::Mesh::UNKNOWN_TYPE;
+    return tc::ColladaMesh::UNKNOWN_TYPE;
 }
+
 
 //----------------------------------------------------------------------
-//  プリミティブのinput数を取得
-int getPrimitiveInputCount(
-    const xml::XMLElement* mesh_node
+//  visual scene読み込み
+void collectVisualSceneNode(
+    VisualScenes& out,
+    const xml::XMLElement* visual_scene_root
 ) {
-    
-    //  どのデータ構造でインデックスをもっているか調査
-    const xml::XMLElement* primitive_node = nullptr;
-    for (int prim_idx = 0; prim_idx < PRIMITIVE_TYPE_NUM; ++prim_idx) {
+    const xml::XMLElement* visual_scene = firstChildElement(visual_scene_root, "visual_scene");
 
-        //  読み込めたら存在している
-        primitive_node = firstChildElement(
-            mesh_node,
-            PRIMITIVE_TYPE_SELECT[prim_idx].name_
-        );
+    while (visual_scene) {
+        const xml::XMLElement* visual_scene_node = firstChildElement(visual_scene, "node");
+        while (visual_scene_node) {
+            std::shared_ptr<VisualSceneData> vs = std::make_shared<VisualSceneData>();
+            
+            //  行列取得
+            const xml::XMLElement* matrix_node = firstChildElement(visual_scene_node, "matrix");
+            const char* mtx_text = matrix_node->GetText();
+            readArray(mtx_text, &vs->matrix_);
 
-        if (primitive_node) {
-            break;
+            //  タイプ判定
+            const xml::XMLElement* instance_geometry = firstChildElement(visual_scene_node, "instance_geometry");
+            if (instance_geometry) {
+                // ジオメトリノードだった
+                vs->type_ = VisualSceneData::TYPE_GEOMETRY;
+                const char* attr_url = getElementAttribute(instance_geometry, "url");
+                if (attr_url[0] == '#') {
+                    attr_url = &attr_url[1];
+                }
+                vs->url_ = attr_url;
+
+            
+                //  マテリアル取得
+                const xml::XMLElement* bind_material = firstChildElement(
+                    instance_geometry,
+                    "bind_material"
+                );
+                if (bind_material) {
+                    //  マテリアル設定があった
+                    const xml::XMLElement* technique_common = firstChildElement(
+                        bind_material,
+                        "technique_common"
+                    );
+                    const xml::XMLElement* instance_material = firstChildElement(
+                        technique_common,
+                        "instance_material"
+                    );
+                    const char* attr_target = getElementAttribute(
+                        instance_material,
+                        "target"
+                    );
+                    if (attr_target[0] == '#') {
+                        attr_target = &attr_target[1];
+                    }
+                    vs->bind_material_ = attr_target;
+                }
+            
+            }
+            
+            out.push_back(vs);
+            visual_scene_node = visual_scene_node->NextSiblingElement("node");
         }
+        visual_scene = visual_scene->NextSiblingElement("visual_scene");
     }
-
-    if (!primitive_node) {
-        //  プリミティブ存在しない
-        return 0;
-    }
-
-    //  あった
-    //  input数を取得
-    //  読み込めたら存在している
-    const xml::XMLElement* input = firstChildElement(
-        primitive_node,
-        INPUT_NODE_NAME
-    );
-    int count = 0;
-    while(input) {
-        ++count;
-        input = input->NextSiblingElement(INPUT_NODE_NAME);
-    }
-
-
-    return count;
 }
+
+
+//----------------------------------------------------------------------
+//  マテリアルノード読み込み
+void collectMaterialNode(
+    Materials& out,
+    const xml::XMLElement* library_materials
+) {
+    const xml::XMLElement* material = firstChildElement(library_materials, "material");
+
+    while (material) {
+        const xml::XMLElement* instance_effect = firstChildElement(material, "instance_effect");
+        std::shared_ptr<MaterialData> md = std::make_shared<MaterialData>();
+        md->id_ = getElementAttribute(material, "id");
+        while (instance_effect) {
+            const char* attr_url = getElementAttribute(instance_effect, "url");
+            if (attr_url[0] == '#') {
+                attr_url = &attr_url[1];
+            }
+            md->url_ = attr_url;
+            instance_effect = instance_effect->NextSiblingElement("instance_effect");
+        }
+        
+        out.push_back(md);
+        material = material->NextSiblingElement("material");
+    }
+}
+
+
+//----------------------------------------------------------------------
+//  phongノード読み込み
+void parseEffect(
+    std::shared_ptr<EffectData>& ef,
+    const xml::XMLElement* shading
+) {
+    //  エミッション
+    const xml::XMLElement* emission = firstChildElement(shading, "emission");
+    if (emission) {
+        const xml::XMLElement* color = firstChildElement(emission, "color");
+        const char* text = color->GetText();
+        readArray(text, &ef->material_.emission_);
+    }
+    
+    //  アンビエント
+    const xml::XMLElement* ambient = firstChildElement(shading, "ambient");
+    if (ambient) {
+        const xml::XMLElement* color = firstChildElement(ambient, "color");
+        const char* text = color->GetText();
+        readArray(text, &ef->material_.ambient_);
+    
+    }
+
+    //  ディフューズ
+    const xml::XMLElement* diffuse = firstChildElement(shading, "diffuse");
+    if (diffuse) {
+        const xml::XMLElement* color = firstChildElement(diffuse, "color");
+        const char* text = color->GetText();
+        readArray(text, &ef->material_.diffuse_);
+    
+    }
+
+    //  スペキュラ
+    const xml::XMLElement* specular = firstChildElement(shading, "specular");
+    if (specular) {
+        const xml::XMLElement* color = firstChildElement(specular, "color");
+        const char* text = color->GetText();
+        readArray(text, &ef->material_.specular_);
+    
+    }
+
+    //  リフレクティブ
+    const xml::XMLElement* reflective = firstChildElement(shading, "reflective");
+    if (reflective) {
+        const xml::XMLElement* color = firstChildElement(reflective, "color");
+        const char* text = color->GetText();
+        readArray(text, &ef->material_.reflective_);
+    
+    }
+    
+    
+    //  リフレクティビティ
+    const xml::XMLElement* reflectivity = firstChildElement(shading, "reflectivity");
+    if (reflectivity) {
+        const xml::XMLElement* data = firstChildElement(reflectivity, "float");
+        const char* val = data->GetText();
+
+        ef->material_.reflectivity_ = atof(val);
+    }
+
+    //  シャイネス
+    const xml::XMLElement* shininess = firstChildElement(shading, "shininess");
+    if (shininess) {
+        const xml::XMLElement* data = firstChildElement(shininess, "float");
+        const char* val = data->GetText();
+
+        ef->material_.shininess_ = atof(val);
+    }
+    
+    //  透明度
+    const xml::XMLElement* transparency = firstChildElement(shading, "transparency");
+    if (transparency) {
+        const xml::XMLElement* data = firstChildElement(transparency, "float");
+        const char* val = data->GetText();
+
+        ef->material_.transparency_ = atof(val);
+    }
+
+}
+
+
+//----------------------------------------------------------------------
+//  エフェクトノード読み込み
+void collectEffectNode(
+    Effects& out,
+    const xml::XMLElement* library_effects
+) {
+    const char* SHADING_NAME[3] = {
+        "blinn",
+        "phong",
+        "----"
+    };
+    const xml::XMLElement* effect = firstChildElement(library_effects, "effect");
+
+    while (effect) {
+        const xml::XMLElement* profile_common = firstChildElement(effect, "profile_COMMON");
+        const xml::XMLElement* technique = firstChildElement(profile_common, "technique");
+
+        std::shared_ptr<EffectData> ed = std::make_shared<EffectData>();
+        ed->id_ = getElementAttribute(effect, "id");
+
+        for (int shade_idx = 0; shade_idx < 3; ++shade_idx) {
+            const xml::XMLElement* shading = firstChildElement(technique, SHADING_NAME[shade_idx]);
+            if (shading) {
+                //  シェーディング
+                ed->material_.shading_name_ = SHADING_NAME[shade_idx];
+                parseEffect(ed, shading);
+                break;
+            }
+        }
+        
+        out.push_back(ed);
+        effect = effect->NextSiblingElement("effect");
+    }
+
+}
+
+
+
 
 //----------------------------------------------------------------------
 //  インデックス読み込み
@@ -279,8 +639,9 @@ void collectIndices(
 
     //  インデックス値読み込み
     if (primitive_node) {
-        char* text = const_cast<char*>(primitive_node->FirstChildElement(INDEX_NODE_NAME)->GetText());
-       readArray(text, &indices);
+        const xml::XMLElement* index_node = firstChildElement(primitive_node, INDEX_NODE_NAME);
+        const char* text = index_node->GetText();
+        readArray(text, &indices);
     }
     
     TINY_COLLADA_TRACE("Collect index size = %lu\n", indices.size());
@@ -296,8 +657,11 @@ void collectFaceCount(
 
     //  インデックス値読み込み
     if (primitive_node) {
-        char* text = const_cast<char*>(primitive_node->FirstChildElement("vcount")->GetText());
-       readArray(text, &face_count);
+        const xml::XMLElement* vcount_node = primitive_node->FirstChildElement("vcount");
+        if (vcount_node) {
+            char* text = const_cast<char*>(vcount_node->GetText());
+            readArray(text, &face_count);
+        }
     }
     
     TINY_COLLADA_TRACE("Collect face count size = %lu\n", face_count.size());
@@ -329,23 +693,12 @@ void collectMeshSources(
     }
 }
 
-
 //----------------------------------------------------------------------
 //  インプット情報を取得
-void collectMeshInputs(
+void collectInputNodeData(
     std::vector<InputData>& out,
-    const xml::XMLElement* mesh
-){
-    //  verticesノードのインプットとの２重連携の為に
-    const xml::XMLElement* vertices =  firstChildElement(mesh, VERTICES_NODE_NAME);
-
-    //  inputノード
-    const xml::XMLElement* target_node = getPrimitiveNode(mesh);
-	if (!target_node) {
-		return;
-	}
-    const xml::XMLElement* input_node = firstChildElement(target_node, INPUT_NODE_NAME);
-
+    const xml::XMLElement* input_node
+) {
     while (input_node) {
         InputData input;
         //  sourceアトリビュートを取得
@@ -354,34 +707,9 @@ void collectMeshInputs(
         if (attr_source[0] == '#') {
             attr_source = &attr_source[1];
         }
-
-        //  verticesノードのinputで置き換えるべきものか判定
-        if (vertices) {
-            const char* vertices_id = getElementAttribute(vertices, ID_ATTR_NAME);
-            if (std::strncmp(attr_source, vertices_id, STRING_COMP_SIZE) == 0) {
-                const xml::XMLElement* vert_input_node = firstChildElement(vertices, INPUT_NODE_NAME);
-                //  verticesノードのinputで置き換える
-                const char* vert_source = getElementAttribute(vert_input_node, SOURCE_NODE_NAME);
-                //  source_nameの先頭の#を取る
-                if (vert_source[0] == '#') {
-                    vert_source = &vert_source[1];
-                }
-                attr_source = vert_source;
-
-                //  semanticも保存しておく
-                input.semantic_ = getElementAttribute(vert_input_node, SEMANTIC_ATTR_NAME);
-            }
-
-        }
         input.source_ = attr_source;
-
-
-        //  semanticアトリビュートを取得
-        if (!input.semantic_) {
-            //  verticesとのリレーションが既にはられてなければinputのsemanticを使用
-            input.semantic_ = getElementAttribute(input_node, SEMANTIC_ATTR_NAME);
-        }
-
+        input.semantic_ = getElementAttribute(input_node, SEMANTIC_ATTR_NAME);
+        
         //  offsetアトリビュートを取得
         const char* attr_offset = getElementAttribute(input_node, OFFSET_ATTR_NAME);
         int offset = 0;
@@ -389,12 +717,35 @@ void collectMeshInputs(
             offset = atoi(attr_offset);
         }
         input.offset_ = offset;
-        
 
+
+        //  インプットノード保存
         out.push_back(input);
+
         //  次へ
         input_node = input_node->NextSiblingElement(INPUT_NODE_NAME);
     }
+ 
+}
+
+//----------------------------------------------------------------------
+//  インプット情報を取得
+void collectMeshInputs(
+    std::vector<InputData>& out,
+    const xml::XMLElement* mesh
+){
+    //  primitiveノード
+    const xml::XMLElement* primitive_node = getPrimitiveNode(mesh);
+	if (!primitive_node) {
+		return;
+	}
+    const xml::XMLElement* prim_input_node = firstChildElement(primitive_node, INPUT_NODE_NAME);
+    collectInputNodeData(out, prim_input_node);
+    
+    //  vertices_node
+    const xml::XMLElement* vertices =  firstChildElement(mesh, VERTICES_NODE_NAME);
+    const xml::XMLElement* vert_input_node = firstChildElement(vertices, INPUT_NODE_NAME);
+    collectInputNodeData(out, vert_input_node);
 }
 
 
@@ -411,10 +762,7 @@ class Parser::Impl
 {
 public:
 Impl()
-    : raw_indices_()
-    , meshes_()
-    , sources_()
-    , inputs_()
+    : meshes_()
 {
 }
 
@@ -428,29 +776,119 @@ Result parseCollada(
     const xml::XMLDocument* const doc
 ) {
     
-    //  メッシュ情報が入ってるのはgeometryノード
+    //  ルートノード取得
     const xml::XMLElement* root_node = doc->RootElement();
-    const xml::XMLElement* library_geometries_node = firstChildElement(
+
+
+    //  visual_scene解析
+    VisualScenes visual_scenes;
+    const xml::XMLElement* library_visual_scene = firstChildElement(
+        root_node,
+        "library_visual_scenes"
+    );
+    collectVisualSceneNode(visual_scenes, library_visual_scene);
+
+    //  マテリアルノード解析
+    Materials materials;
+    const xml::XMLElement* library_materials = firstChildElement(root_node, "library_materials");
+    if (library_materials) {
+        collectMaterialNode(materials, library_materials);
+    }
+    
+    //  エフェクトノード解析
+    Effects effects;
+    const xml::XMLElement* library_effects = firstChildElement(root_node, "library_effects");
+    if (library_effects) {
+        collectEffectNode(effects, library_effects);
+    }
+
+    //  ダンプ
+    for (int i = 0; i < visual_scenes.size(); ++i) {
+        visual_scenes[i]->dump();
+    }
+    for (int i = 0; i < materials.size(); ++i) {
+        materials[i]->dump();
+    }
+    for (int i = 0; i < effects.size(); ++i) {
+        effects[i]->dump();
+    }
+
+    //  ジオメトリノード解析
+    const xml::XMLElement* library_geometries = firstChildElement(
         root_node,
         LIB_GEOMETRY_NODE_NAME
     );
-    const xml::XMLElement* geometry_node = firstChildElement(
-        library_geometries_node,
-        GEOMETRY_NODE_NAME
-    );
     
-    while (geometry_node) {
-        //  メッシュデータ解析
-        std::shared_ptr<Mesh> data = std::make_shared<Mesh>();
-        const xml::XMLElement* mesh_node = firstChildElement(geometry_node, MESH_NODE_NAME);
+    
+    for (int vs_idx = 0; vs_idx < visual_scenes.size(); ++vs_idx) {
+        std::shared_ptr<VisualSceneData>& vs = visual_scenes[vs_idx];
+        if (vs->type_ != VisualSceneData::TYPE_GEOMETRY) {
+            continue;
+        }
+
+        const xml::XMLElement* geometry = firstChildElement(
+            library_geometries,
+            GEOMETRY_NODE_NAME
+        );
+
+        //  シーン作成
+        std::shared_ptr<ColladaScene> scene = std::make_shared<ColladaScene>();
+
+        //  マトリックス登録
+        scene->matrix_ = vs->matrix_;
         
-        parseMeshNode(mesh_node, data);
-        meshes_.push_back(data);
+        //  マテリアル設定
+    
+    
+        //  メッシュ情報生成
+        while (geometry) {
+            const char* geometry_id = getElementAttribute(geometry, "id");
+            
+            printf("a%s ", geometry_id);
+            printf("b%s" , vs->url_);
+            if (std::strncmp(vs->url_, geometry_id, STRING_COMP_SIZE) != 0) {
+                //  次のジオメトリ
+                geometry = geometry->NextSiblingElement(GEOMETRY_NODE_NAME);
+            }
         
-        //  次のジオメトリ
-        geometry_node = geometry_node->NextSiblingElement(GEOMETRY_NODE_NAME);
-        break;
+            //  メッシュデータ解析
+            const xml::XMLElement* mesh_node = firstChildElement(
+                geometry,
+                MESH_NODE_NAME
+            );
+            while (mesh_node) {
+            
+                std::shared_ptr<ColladaMesh> data = std::make_shared<ColladaMesh>();
+                parseMeshNode(mesh_node, data);
+            
+                //  頂点と法線の並びが同じになっているかチェック
+                if (data->hasVertex()) {
+                    const ColladaMesh::ArrayData* varray = data->getVertex();
+                    if (data->hasNormal()) {
+                        const ColladaMesh::ArrayData* narray = data->getNormals();
+                        size_t visize = varray->data_.size();
+                        size_t nisize = narray->data_.size();
+                        TINY_COLLADA_TRACE("%d[v] == %d[n]\n", visize, nisize);
+                        TINY_COLLADA_ASSERT(visize == nisize);
+                    }
+                }
+            
+//                data->material_name_ = vs->bind_material_;
+
+
+                //  データ登録
+                meshes_.push_back(data);
+                scene->meshes_.push_back(data);
+                
+                //  次へ
+                mesh_node = mesh_node->NextSiblingElement(MESH_NODE_NAME);
+            }
+            break;
+        }
+        
     }
+    
+    
     
     return Result::Code::SUCCESS;
 }
@@ -459,23 +897,27 @@ Result parseCollada(
 //  メッシュノードの解析
 void parseMeshNode(
     const xml::XMLElement* mesh_node,
-    ::std::shared_ptr<tc::Mesh> data
+    ::std::shared_ptr<tc::ColladaMesh> data
 ) {
+    std::shared_ptr<MeshInformation> info = std::make_shared<MeshInformation>();
+
     //  インデックス情報保存
-    collectIndices(mesh_node, raw_indices_);
-    collectFaceCount(mesh_node, face_count_);
+    collectIndices(mesh_node, info->raw_indices_);
+    collectFaceCount(mesh_node, info->face_count_);
 
     //  ソースノードの情報保存
-    collectMeshSources(sources_, mesh_node);
+    collectMeshSources(info->sources_, mesh_node);
     
     //  インプットノードの情報保存
-    collectMeshInputs(inputs_, mesh_node);
+    collectMeshInputs(info->inputs_, mesh_node);
+    
+    info->dump();
     
     //  ソースとインプットを関連付け
-    relateSourcesToInputs();
+    relateSourcesToInputs(info);
     printf("\n\n");
-    for (int i = 0; i < sources_.size(); ++i) {
-        SourceData* src = &sources_[i];
+    for (int i = 0; i < info->sources_.size(); ++i) {
+        SourceData* src = &info->sources_[i];
 		if (src->input_) {
 			printf("SRC:%s - INPUT:%s\n", src->id_, src->input_->source_);
 			printf("  DATA size %d\n", src->data_.size());
@@ -484,47 +926,104 @@ void parseMeshNode(
     printf("\n\n");
 
 
-    setupMesh(mesh_node, data);
+    setupMesh(mesh_node, info, data);
     
 }
 
 //----------------------------------------------------------------------
 void setupMesh(
     const xml::XMLElement* mesh_node,
-    ::std::shared_ptr<tc::Mesh> mesh
+    std::shared_ptr<MeshInformation> info,
+    std::shared_ptr<tc::ColladaMesh> mesh
 ) {
     //  プリミティブの描画タイプを設定
-    tc::Mesh::PrimitiveType prim_type = getPrimitiveType(mesh_node);
+    tc::ColladaMesh::PrimitiveType prim_type = getPrimitiveType(mesh_node);
     mesh->setPrimitiveType(prim_type);
 
-    int offset_count = getPrimitiveInputCount(mesh_node);
+    int offset_size = info->getIndexStride();
 
-    SourceData* pos_source = searchSourceBySemantic("POSITION");
+    const SourceData* pos_source = info->searchSourceBySemantic("POSITION");
     if (pos_source) {
         printf("pos_source size %d\n", pos_source->data_.size());
         mesh->vertex_.data_ = pos_source->data_;
         mesh->vertex_.stride_ = pos_source->stride_;
-        if (face_count_.empty()) {
-            setupIndices(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
+        if (info->face_count_.empty()) {
+            setupIndices(
+                mesh->vertex_.indices_,
+                info->raw_indices_,
+                pos_source->input_->offset_,
+                offset_size
+            );
         }
         else {
-            setupIndicesMultiFace(mesh->vertex_.indices_, pos_source->input_->offset_, offset_count);
+            setupIndicesMultiFace(
+                mesh->vertex_.indices_,
+                info,
+                pos_source->input_->offset_,
+                offset_size
+            );
         }
     }
     
-    SourceData* normal_source = searchSourceBySemantic("NORMAL");
+    const SourceData* normal_source = info->searchSourceBySemantic("NORMAL");
     if (normal_source) {
         printf("normal_source size %d\n", normal_source->data_.size());
-        mesh->normal_.data_ = normal_source->data_;
+        
         mesh->normal_.stride_ = normal_source->stride_;
-        if (face_count_.empty()) {
-            setupIndices(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
+        if (info->face_count_.empty()) {
+            setupIndices(
+                mesh->normal_.indices_,
+                info->raw_indices_,
+                normal_source->input_->offset_,
+                offset_size
+            );
         }
         else {
-            setupIndicesMultiFace(mesh->normal_.indices_, normal_source->input_->offset_, offset_count);
+            setupIndicesMultiFace(
+                mesh->normal_.indices_,
+                info,
+                normal_source->input_->offset_,
+                offset_size
+            );
         }
+        
+        //  頂点インデックスにあわせてデータ変更
+#if 1
+        Indices& vindices = mesh->vertex_.indices_;
+        Indices& nindices = mesh->normal_.indices_;
+        mesh->normal_.data_.resize(pos_source->data_.size(), 8.8);
+        for (int vert_idx = 0; vert_idx < vindices.size(); ++vert_idx) {
+            uint32_t vidx = vindices.at(vert_idx);
+            uint32_t nidx = nindices.at(vert_idx);
+            uint32_t nstride = normal_source->stride_;
+            uint32_t from_idx = nidx * nstride;
+            uint32_t to_idx = vidx * nstride;
+            printf("%d-%d\n", vidx, nidx);
+            for (int di = 0; di < nstride; ++di) {
+                int to = to_idx + di;
+                int from = from_idx + di;
+                printf("　　%d -> %d\n", from, to );
+                mesh->normal_.data_[to_idx + di] = normal_source->data_.at(from_idx + di);
+            }
+            
+            
+            for (int x = 0; x < mesh->normal_.data_.size(); ++x) {
+                if ((x % 3) == 0) {
+//                    printf("  ");
+                }
+//                printf ("%1.1f ",mesh->normal_.data_[x]);
+                
+            }
+ //           printf("\n");
+        }
+#else 
+        mesh->normal_.data_ = normal_source->data_;
+
+#endif
+        
     }
 }
+
 
 
 
@@ -532,12 +1031,13 @@ void setupMesh(
 //  事前に抜いておいたインデックス一覧からインデックスのセットアップ
 void setupIndices(
     Indices& out,
+    Indices& src,
     int start_offset,
     int stride
 ) {
     TINY_COLLADA_TRACE("%s start_offset = %d stride = %d\n", __FUNCTION__, start_offset, stride);
-    for (int i = start_offset; i < raw_indices_.size(); i += stride) {
-        out.push_back(raw_indices_.at(i));
+    for (int i = start_offset; i < src.size(); i += stride) {
+        out.push_back(src.at(i));
     }
     TINY_COLLADA_TRACE("index size = %lu\n", out.size());
 }
@@ -546,19 +1046,20 @@ void setupIndices(
 //  事前に抜いておいたインデックス一覧からインデックスのセットアップ2
 void setupIndicesMultiFace(
     Indices& out,
+    std::shared_ptr<MeshInformation>& info,
     int start_offset,
     int stride
 ) {
     int idx = start_offset;
-    for (int i = 0; i < face_count_.size(); ++ i) {
-        int vcnt = face_count_.at(i);
+    for (int i = 0; i < info->face_count_.size(); ++ i) {
+        int vcnt = info->face_count_.at(i);
 
         if (vcnt == 3) {
-            uint32_t idx1 = raw_indices_.at(idx);
+            uint32_t idx1 = info->raw_indices_.at(idx);
             idx += stride;
-            uint32_t idx2 = raw_indices_.at(idx);
+            uint32_t idx2 = info->raw_indices_.at(idx);
             idx += stride;
-            uint32_t idx3 = raw_indices_.at(idx);
+            uint32_t idx3 = info->raw_indices_.at(idx);
             idx += stride;
             out.push_back(idx1);
             out.push_back(idx2);
@@ -566,13 +1067,13 @@ void setupIndicesMultiFace(
 
         }
         else if (vcnt == 4) {
-            uint32_t idx1 = raw_indices_.at(idx);
+            uint32_t idx1 = info->raw_indices_.at(idx);
             idx += stride;
-            uint32_t idx2 = raw_indices_.at(idx);
+            uint32_t idx2 = info->raw_indices_.at(idx);
             idx += stride;
-            uint32_t idx3 = raw_indices_.at(idx);
+            uint32_t idx3 = info->raw_indices_.at(idx);
             idx += stride;
-            uint32_t idx4 = raw_indices_.at(idx);
+            uint32_t idx4 = info->raw_indices_.at(idx);
             idx += stride;
 
             out.push_back(idx1);
@@ -583,31 +1084,29 @@ void setupIndicesMultiFace(
             out.push_back(idx3);
             out.push_back(idx4);
         }
-
-        
-        
     }
-
 }
 
     
 //----------------------------------------------------------------------
 //  メッシュから抜いたinputsとsourcesを関連付ける
-void relateSourcesToInputs()
+void relateSourcesToInputs(
+    std::shared_ptr<MeshInformation>& info
+)
 {
     TINY_COLLADA_TRACE("%s\n", __FUNCTION__);
-    auto src_it = sources_.begin();
-    auto src_end = sources_.end();
+    auto src_it = info->sources_.begin();
+    auto src_end = info->sources_.end();
     
 
 	while (src_it != src_end) {
-		InputData* input = searchInputBySource(src_it->id_);
+		InputData* input = info->searchInputBySource(src_it->id_);
 		src_it->input_ = input;
 		
 		TINY_COLLADA_TRACE(" %s", src_it->id_);
 		if (input) {
 			TINY_COLLADA_TRACE(" OK\n");
-			TINY_COLLADA_TRACE("  %s %s", input->semantic_, input->source_);
+			TINY_COLLADA_TRACE("  %s %s\n", input->semantic_, input->source_);
 		}
 		else {
 			TINY_COLLADA_TRACE(" NG\n");
@@ -616,42 +1115,7 @@ void relateSourcesToInputs()
 	}
 }
     
-//----------------------------------------------------------------------
-//  指定idのinputを探す
-InputData* searchInputBySource(
-    const char* const id
-) {
-    for (int i = 0; i < inputs_.size(); ++i) {
-        InputData* input = &inputs_[i];
-        if (std::strncmp(input->source_, id, STRING_COMP_SIZE) == 0){
-            return input;
-        }
-    }
-    return nullptr;
-}
-    
-//----------------------------------------------------------------------
-//  指定semanticのsourceを探す
-SourceData* searchSourceBySemantic(
-    const char* const semantic
-) {
-    printf("\nsearchSourceBySemantic %s\n", semantic);
-    for (int i = 0; i < sources_.size(); ++i) {
-        SourceData* source = &sources_[i];
-        InputData* input = source->input_;
-        if (!input) {
-            continue;
-        }
-        printf("  %s %s\n", input->semantic_, input->source_);   
-        if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE) == 0) {
-            TINY_COLLADA_TRACE("%s - %s [%s] FOUND.\n", __FUNCTION__, semantic, input->source_);
-            return source;
-        }
-    }
-    TINY_COLLADA_TRACE("%s - %s NOT FOUND.\n", __FUNCTION__, semantic);
-        
-    return nullptr;
-}
+
 
 //----------------------------------------------------------------------
 //  メッシュリスト取得
@@ -660,14 +1124,14 @@ const Meshes* getMeshList() const {
     return &meshes_;
 }
 
+const ColladaScenes* getScenes() const {
+    return &scenes_;
+}
+
 
 private:
-    Indices raw_indices_;
+    ColladaScenes scenes_;
     Meshes meshes_;
-    std::vector<char> face_count_;
-    std::vector<SourceData> sources_;
-    std::vector<InputData> inputs_;
-
 };  // class Parser::Impl
 
 
@@ -713,9 +1177,14 @@ const Meshes* Parser::meshes() const
     return impl_->getMeshList();
 }
 
+const ColladaScenes* Parser::scenes() const
+{
+    return impl_->getScenes();
+}
+
 //----------------------------------------------------------------------
 //  データをコンソールに出力
-void Mesh::dump()
+void ColladaMesh::dump()
 {
     printf("--- Vertex data dump ---\n");
     vertex_.dump();
@@ -728,7 +1197,7 @@ void Mesh::dump()
 
 //----------------------------------------------------------------------
 //  データをコンソールに出力
-void Mesh::ArrayData::dump()
+void ColladaMesh::ArrayData::dump()
 {
     if (!isValidate()) {
         printf("This ArrayData is invalidate data.\n");

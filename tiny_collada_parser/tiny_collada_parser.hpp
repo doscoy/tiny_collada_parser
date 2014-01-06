@@ -61,13 +61,83 @@ private:
     Code code_;
 };
 
-class Mesh;
-typedef ::std::vector<uint32_t> Indices;
-typedef ::std::vector<float> Vertices;
-typedef ::std::vector<::std::shared_ptr<Mesh>> Meshes;
+class ColladaMesh;
+using Indices = ::std::vector<uint32_t>;
+using Vertices = ::std::vector<float>;
+using Meshes =  ::std::vector<::std::shared_ptr<ColladaMesh>>;
+
+//  ColladaMaterial
+class ColladaMaterial
+{
+public:
+    void dump() {
+        printf("ColladaMaterial:shading = %s\n", shading_name_);
+        
+        printf("  diffuse");
+        for (int i = 0; i < diffuse_.size(); ++i) {
+            printf(" %f", diffuse_[i]);
+        }
+        printf("\n");
+
+        printf("  ambient");
+        for (int i = 0; i < ambient_.size(); ++i) {
+            printf(" %f", ambient_[i]);
+        }
+        printf("\n");
+
+
+        printf("  emission");
+        for (int i = 0; i < emission_.size(); ++i) {
+            printf(" %f", emission_[i]);
+        }
+        printf("\n");
+
+
+        printf("  specular");
+        for (int i = 0; i < specular_.size(); ++i) {
+            printf(" %f", specular_[i]);
+        }
+        printf("\n");
+
+        printf("  reflective");
+        for (int i = 0; i < reflective_.size(); ++i) {
+            printf(" %f", reflective_[i]);
+        }
+        printf("\n");
+        
+        printf("  reflectivity %f\n", reflectivity_);
+        printf("  shininess %f\n", shininess_);
+        printf("  transparency %f\n", transparency_);
+        printf("\n");
+    }
+
+    ColladaMaterial()
+        : shading_name_(nullptr)
+        , diffuse_()
+        , ambient_()
+        , emission_()
+        , specular_()
+        , reflective_()
+        , shininess_(0.0f)
+        , transparency_(0.0f)
+        , reflectivity_(0.0f)
+    {}
+
+
+    const char* shading_name_;
+    std::vector<float> diffuse_;
+    std::vector<float> ambient_;
+    std::vector<float> emission_;
+    std::vector<float> specular_;
+    std::vector<float> reflective_;
+    float shininess_;
+    float transparency_;
+    float reflectivity_;
+};
+
 
 //  Colladaメッシュデータ
-class Mesh final
+class ColladaMesh final
 {
 public:
     class ArrayData
@@ -97,7 +167,6 @@ public:
         int8_t stride_;
         std::vector<float> data_;
         Indices indices_;
-
     };
 
 public:
@@ -107,14 +176,14 @@ public:
     };
     
 public:
-    Mesh()
+    ColladaMesh()
         : vertex_()
         , normal_()
         , primitive_type_(UNKNOWN_TYPE)
     {}
-    ~Mesh(){}
-    Mesh& operator=(const Mesh&) = delete;	// コピーの禁止
-    Mesh(const Mesh&) = delete;
+    ~ColladaMesh(){}
+    ColladaMesh& operator=(const ColladaMesh&) = delete;	// コピーの禁止
+    ColladaMesh(const ColladaMesh&) = delete;
 
     
 public:
@@ -138,11 +207,11 @@ public:
         return primitive_type_;
     }
     
-    ArrayData* getVertex() {
+    const ArrayData* getVertex() const{
         return &vertex_;
     }
     
-    ArrayData* getNormals() {
+    const ArrayData* getNormals() const {
         return &normal_;
     }
 
@@ -153,8 +222,18 @@ public:
     ArrayData vertex_;
     ArrayData normal_;
     PrimitiveType primitive_type_;
+    std::shared_ptr<ColladaMaterial> material_;
 };
 
+//  シーン情報
+class ColladaScene
+{
+public:
+    std::vector<float> matrix_;
+    std::vector<std::shared_ptr<ColladaMesh>> meshes_;
+    std::shared_ptr<ColladaMaterial> material_;
+};
+using ColladaScenes = std::vector<std::shared_ptr<ColladaScene>>;
 
 
 //  パーサー
@@ -169,7 +248,7 @@ public:
     Result parse(const char* const dae_file_path);
     
     const Meshes* meshes() const;
-    
+    const ColladaScenes* scenes() const;
 private:
     class Impl;
     ::std::unique_ptr<Impl> impl_;
@@ -181,6 +260,6 @@ private:
 
 
 
-}   // namespace mcp
+}   // namespace tc
 
 #endif // MCP_PARSER_HPP_INCLUDED

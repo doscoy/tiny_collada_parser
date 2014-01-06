@@ -10,10 +10,10 @@ const tc::Meshes* meshes_ = nullptr;
 
 //----------------------------------------------------------------------
 //	メッシュの描画
-void drawMesh(std::shared_ptr<tc::Mesh> mesh)
+void drawMesh(std::shared_ptr<tc::ColladaMesh> mesh)
 {
 	//	頂点取得
-    tc::Mesh::ArrayData* pos = mesh->getVertex();
+    const tc::ColladaMesh::ArrayData* pos = mesh->getVertex();
 	if (!pos) {
 		return;
 	}
@@ -37,7 +37,7 @@ void display()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
-	std::shared_ptr<tc::Mesh> mesh = meshes_->at(0);
+	std::shared_ptr<tc::ColladaMesh> mesh = meshes_->at(0);
 
 	//	カメラ設定
 	glMatrixMode(GL_MODELVIEW);
