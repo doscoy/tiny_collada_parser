@@ -113,6 +113,7 @@ public:
 
     ColladaMaterial()
         : shading_name_(nullptr)
+        , texture_name_(nullptr)
         , diffuse_()
         , ambient_()
         , emission_()
@@ -125,6 +126,7 @@ public:
 
 
     const char* shading_name_;
+    const char* texture_name_;
     std::vector<float> diffuse_;
     std::vector<float> ambient_;
     std::vector<float> emission_;
@@ -179,6 +181,7 @@ public:
     ColladaMesh()
         : vertex_()
         , normal_()
+        , texcoord_()
         , primitive_type_(UNKNOWN_TYPE)
     {}
     ~ColladaMesh(){}
@@ -195,6 +198,11 @@ public:
     //  頂点を持っているか判定
     bool hasVertex() const {
         return vertex_.isValidate();
+    }
+
+    //  テクスチャ座標を持っているか判定
+    bool hasTexCoord() const {
+        return texcoord_.isValidate();
     }
 
     void setPrimitiveType(
@@ -215,12 +223,17 @@ public:
         return &normal_;
     }
 
+    const ArrayData* getTexCoord() const {
+        return &texcoord_;
+    }
+
     void dump();
 
 
 public:
     ArrayData vertex_;
     ArrayData normal_;
+    ArrayData texcoord_;
     PrimitiveType primitive_type_;
     std::shared_ptr<ColladaMaterial> material_;
 };

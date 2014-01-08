@@ -75,21 +75,21 @@ struct VisualSceneData
 
 
     void dump() {
-        printf("VisualSceneNode:type = %d ", type_);
+        TINY_COLLADA_TRACE("VisualSceneNode:type = %d ", type_);
         if (url_) {
-            printf("url = %s ", url_);
+            TINY_COLLADA_TRACE("url = %s ", url_);
         }
         if (bind_material_) {
-            printf("bind_material = %s", bind_material_);
+            TINY_COLLADA_TRACE("bind_material = %s", bind_material_);
         }
-        printf(" matrix (%d)", matrix_.size());
+        TINY_COLLADA_TRACE(" matrix (%d)", matrix_.size());
         for (int i = 0; i < matrix_.size(); ++i) {
             if ((i % 4) == 0) {
-                printf("\n");
+                TINY_COLLADA_TRACE("\n");
             }
-            printf(" %f", matrix_[i]);
+            TINY_COLLADA_TRACE(" %f", matrix_[i]);
         }
-        printf("\n");
+        TINY_COLLADA_TRACE("\n");
     }
 
     enum Type {
@@ -103,6 +103,7 @@ struct VisualSceneData
 };
 using VisualScenes = std::vector<std::shared_ptr<VisualSceneData>>;
 
+
 //======================================================================
 //  material
 struct MaterialData
@@ -111,17 +112,18 @@ struct MaterialData
     const char* url_;
     
     void dump() {
-        printf("MaterialData:id %s  url %s\n", id_, url_);
+        TINY_COLLADA_TRACE("MaterialData:id %s  url %s\n", id_, url_);
     }
 };
 using Materials = std::vector<std::shared_ptr<MaterialData>>;
+
 
 //======================================================================
 //  material effect
 struct EffectData
 {
     void dump() {
-        printf("EffectData: id = %s\n", id_);
+        TINY_COLLADA_TRACE("EffectData: id = %s\n", id_);
         material_->dump();
     }
 
@@ -137,6 +139,24 @@ struct EffectData
 using Effects = std::vector<std::shared_ptr<EffectData>>;
 
 
+//======================================================================
+//  textures
+struct ImageData
+{
+    void dump() {
+        TINY_COLLADA_TRACE("ImageData: id = %s  init_from = %s\n", id_, init_from_);
+    }
+
+    ImageData()
+        : id_(nullptr)
+        , init_from_(nullptr)
+    {}
+
+    const char* id_;
+    const char* init_from_;
+};
+using Images = std::vector<std::shared_ptr<ImageData>>;
+
 
 //======================================================================
 //  インプットデータ
@@ -149,15 +169,15 @@ struct InputData
     {}
     
     void dump() {
-        printf("InputData:semantic = ");
+        TINY_COLLADA_TRACE("InputData:semantic = ");
         if (semantic_) {
             printf(semantic_);
         }
-        printf("  source = ");
+        TINY_COLLADA_TRACE("  source = ");
         if (source_) {
             printf(source_);
         }
-        printf("  offset = %d\n", offset_);
+        TINY_COLLADA_TRACE("  offset = %d\n", offset_);
     }
     
     const char* semantic_;
@@ -177,7 +197,7 @@ struct SourceData
     {}
     
     void dump() {
-        printf("SourceData:id = %s  stride = %d\n", id_, stride_);
+        TINY_COLLADA_TRACE("SourceData:id = %s  stride = %d\n", id_, stride_);
     }
     
     const char* id_;
@@ -199,29 +219,30 @@ InputData* searchInputBySource(
 ) {
     for (int i = 0; i < inputs_.size(); ++i) {
         InputData* input = &inputs_[i];
-        printf("search %s == %s\n", id, input->source_);
+        TINY_COLLADA_TRACE("search %s == %s\n", id, input->source_);
         if (std::strncmp(input->source_, id, STRING_COMP_SIZE) == 0){
             return input;
         }
     }
     return nullptr;
 }
-    
+
+
 //----------------------------------------------------------------------
 //  指定semanticのsourceを探す
 SourceData* searchSourceBySemantic(
     const char* const semantic
 ) {
     size_t sources_size = sources_.size();
-    printf("\nsearchSourceBySemantic %s %d\n", semantic, sources_size);
+    TINY_COLLADA_TRACE("\nsearchSourceBySemantic %s %d\n", semantic, sources_size);
     for (int i = 0; i < sources_size; ++i) {
         SourceData* source = &sources_[i];
         InputData* input = source->input_;
         if (!input) {
-            printf("no input - %s\n", source->id_);
+            TINY_COLLADA_TRACE("no input - %s\n", source->id_);
             continue;
         }
-        printf("  %s %s\n", input->semantic_, input->source_);   
+        TINY_COLLADA_TRACE("  %s %s\n", input->semantic_, input->source_);   
         if (std::strncmp(input->semantic_, semantic, STRING_COMP_SIZE) == 0) {
             TINY_COLLADA_TRACE("%s - %s [%s] FOUND.\n", __FUNCTION__, semantic, input->source_);
             return source;
@@ -363,7 +384,7 @@ void readSourceNode(
         if (count_str) {
             data_count = std::atoi(count_str);
         }
-        printf("reserve %d\n", data_count);
+        TINY_COLLADA_TRACE("reserve %d\n", data_count);
         out->data_.reserve(data_count);
 
         //  データ取得
@@ -519,44 +540,49 @@ void parseEffect(
     const xml::XMLElement* emission = firstChildElement(shading, "emission");
     if (emission) {
         const xml::XMLElement* color = firstChildElement(emission, "color");
-        const char* text = color->GetText();
-        readArray(text, &ef->material_->emission_);
+        if (color) {
+            const char* text = color->GetText();
+            readArray(text, &ef->material_->emission_);
+        }
     }
-    
     //  アンビエント
     const xml::XMLElement* ambient = firstChildElement(shading, "ambient");
     if (ambient) {
         const xml::XMLElement* color = firstChildElement(ambient, "color");
-        const char* text = color->GetText();
-        readArray(text, &ef->material_->ambient_);
-    
+        if (color) {
+            const char* text = color->GetText();
+            readArray(text, &ef->material_->ambient_);
+        }
     }
 
     //  ディフューズ
     const xml::XMLElement* diffuse = firstChildElement(shading, "diffuse");
     if (diffuse) {
         const xml::XMLElement* color = firstChildElement(diffuse, "color");
-        const char* text = color->GetText();
-        readArray(text, &ef->material_->diffuse_);
-    
+        if (color) {
+            const char* text = color->GetText();
+            readArray(text, &ef->material_->diffuse_);
+        }
     }
 
     //  スペキュラ
     const xml::XMLElement* specular = firstChildElement(shading, "specular");
     if (specular) {
         const xml::XMLElement* color = firstChildElement(specular, "color");
-        const char* text = color->GetText();
-        readArray(text, &ef->material_->specular_);
-    
+        if (color) {
+            const char* text = color->GetText();
+            readArray(text, &ef->material_->specular_);
+        }
     }
 
     //  リフレクティブ
     const xml::XMLElement* reflective = firstChildElement(shading, "reflective");
     if (reflective) {
         const xml::XMLElement* color = firstChildElement(reflective, "color");
-        const char* text = color->GetText();
-        readArray(text, &ef->material_->reflective_);
-    
+        if (color) {
+            const char* text = color->GetText();
+            readArray(text, &ef->material_->reflective_);
+        }
     }
     
     
@@ -628,6 +654,31 @@ void collectEffectNode(
 }
 
 
+//----------------------------------------------------------------------
+//  画像パス読み込み
+void collectImageNode(
+    Images& out,
+    const xml::XMLElement* library_images
+) {
+    const xml::XMLElement* image = firstChildElement(library_images, "image");
+
+    while (image) {
+        //  ID取得
+        std::shared_ptr<ImageData> image_data = std::make_shared<ImageData>();
+        image_data->id_ = getElementAttribute(image, "id");
+
+
+        //  テクスチャパス取得
+        const xml::XMLElement* init_from = firstChildElement(image, "init_from");
+        image_data->init_from_ = init_from->GetText();
+        
+
+        //  次へ
+        out.push_back(image_data);
+        image = image->NextSiblingElement("image");
+    }
+
+}
 
 
 //----------------------------------------------------------------------
@@ -851,6 +902,14 @@ Result parseCollada(
         collectEffectNode(effects, library_effects);
     }
 
+    //  テクスチャパス解析
+    Images images;
+    const xml::XMLElement* library_images = firstChildElement(root_node, "library_images");
+    if (library_images) {
+        collectImageNode(images, library_images);
+    }
+
+
     //  ダンプ
     for (int i = 0; i < visual_scenes.size(); ++i) {
         visual_scenes[i]->dump();
@@ -860,6 +919,9 @@ Result parseCollada(
     }
     for (int i = 0; i < effects.size(); ++i) {
         effects[i]->dump();
+    }
+    for (int i = 0; i < images.size(); ++i) {
+        images[i]->dump();
     }
 
     //  ジオメトリノード解析

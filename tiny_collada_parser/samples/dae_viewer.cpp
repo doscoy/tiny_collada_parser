@@ -171,12 +171,19 @@ void display()
         std::shared_ptr<const tc::ColladaMaterial> material = s->material_;
 
         //  マテリアル設定
-        glMaterialfv(GL_FRONT, GL_DIFFUSE, material->diffuse_.data());
-        glMaterialfv(GL_FRONT, GL_AMBIENT, material->ambient_.data());
+        if (!material->diffuse_.empty()){
+            //  ディフューズ
+            glMaterialfv(GL_FRONT, GL_DIFFUSE, material->diffuse_.data());
+        }
+        if (!material->ambient_.empty()) {
+            //  アンビエント
+            glMaterialfv(GL_FRONT, GL_AMBIENT, material->ambient_.data());
+        }
 
-        //  マトリックス
+        //  基本のSRT行列設定
         glLoadMatrixf(s->matrix_.data());
 
+        //  メッシュ描画
         const tc::ColladaMeshes& ms = s->meshes_;
         for (int j = 0; j < ms.size(); ++j) {
             drawMesh(ms[j]);
