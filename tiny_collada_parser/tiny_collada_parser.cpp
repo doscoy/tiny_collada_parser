@@ -28,6 +28,8 @@ namespace xml = tinyxml2;
 
 namespace {
 
+
+
 const char* INPUT_NODE_NAME = "input";
 const char* SOURCE_NODE_NAME = "source";
 const char* SEMANTIC_ATTR_NAME = "semantic";
@@ -42,6 +44,36 @@ const char* ID_ATTR_NAME = "id";
 const char* OFFSET_ATTR_NAME = "offset";
 const char* VERTICES_NODE_NAME = "vertices";
 const char* COUNT_ATTR_NAME = "count";
+
+
+void parseEffect(
+    std::shared_ptr<tc::ColladaMaterial>& material,
+    const xml::XMLElement* shading
+);
+
+
+//----------------------------------------------------------------------
+//  child elementを取得する
+//  大文字小文字がバージョンによってバラバラな場合はここで吸収する
+const xml::XMLElement* firstChildElement(
+    const xml::XMLElement* parent,
+    const char* const child_name
+) {
+    TINY_COLLADA_ASSERT(parent);
+    const xml::XMLElement* child = parent->FirstChildElement(child_name);
+    return child;
+}
+
+//----------------------------------------------------------------------
+//  attributeを取得する
+//  大文字小文字がバージョンによってバラバラな場合はここで吸収する
+const char* getElementAttribute(
+    const xml::XMLElement* element,
+    const char* const attri_name
+) {
+    TINY_COLLADA_ASSERT(element);
+    return element->Attribute(attri_name);
+}
 
 
 //======================================================================
@@ -122,19 +154,162 @@ using Materials = std::vector<std::shared_ptr<MaterialData>>;
 //  material effect
 struct EffectData
 {
-    void dump() {
-        TINY_COLLADA_TRACE("EffectData: id = %s\n", id_);
-        material_->dump();
+    struct Surface {
+
+        Surface()
+            : sid_(nullptr)
+            , init_from_(nullptr)
+        {}
+
+
+        void setupSurface(
+            const char* const sid,
+            const xml::XMLElement* surface
+        ) {
+            sid_ = sid;
+            const xml::XMLElement* init_from = firstChildElement(surface, "init_from");
+            init_from_ = init_from->GetText();
+        }
+
+        void dump() const {
+            printf("Surface:");
+            if (sid_) {
+                printf("sid = %s", sid_);
+            }
+            if (init_from_) {
+                printf ("init from %s", init_from_);
+            }
+            printf("\n");
+        }
+
+        const char* sid_;
+        const char* init_from_;
+    };
+
+    struct Sampler2D {
+
+        Sampler2D()
+            : sid_(nullptr)
+            , source_(nullptr)
+            , min_filter_(nullptr)
+            , mag_filter_(nullptr)
+        {}
+
+
+        void setupSampler2D(
+            const char* const sid,
+            const xml::XMLElement* sampler2d
+        ) {
+            //  sid
+            sid_ = sid;
+
+
+            //  source
+            const xml::XMLElement* source = firstChildElement(sampler2d, "source");
+            if (source) {
+                source_ = source->GetText();
+            }
+
+            //  min filter
+            const xml::XMLElement* min_filter = firstChildElement(sampler2d, "minfilter");
+            if (min_filter) {
+                min_filter_ = min_filter->GetText();
+            }
+
+            //  mag filter
+            const xml::XMLElement* mag_filter = firstChildElement(sampler2d, "magfilter");
+            if (mag_filter) {
+                mag_filter_ = mag_filter->GetText();
+            }
+
+
+        }
+
+        void dump() const {
+            TINY_COLLADA_TRACE("Sampler2D: sid = %s  source = %s  minfil = %s  magfil = %s\n", sid_, source_, min_filter_, mag_filter_);
+        }
+
+        const char* sid_;
+        const char* source_;
+        const char* min_filter_;
+        const char* mag_filter_;
+    };
+
+    void setupEffectData(
+        const xml::XMLElement* effect
+    ) {
+        const char* SHADING_NAME[3] = {
+            "blinn",
+            "phong",
+            "----"
+        };
+
+        //  id
+        id_ = getElementAttribute(effect, "id");
+          
+              
+        const xml::XMLElement* profile_common = firstChildElement(effect, "profile_COMMON");
+            
+        //  マテリアルデータ取得
+        const xml::XMLElement* technique = firstChildElement(profile_common, "technique");
+
+        material_ = std::make_shared<tc::ColladaMaterial>();
+        id_ = getElementAttribute(effect, "id");
+
+        for (int shade_idx = 0; shade_idx < 3; ++shade_idx) {
+            const xml::XMLElement* shading = firstChildElement(technique, SHADING_NAME[shade_idx]);
+            if (shading) {
+                //  シェーディング
+                material_->shading_name_ = SHADING_NAME[shade_idx];
+                parseEffect(material_, shading);
+                break;
+            }
+        }
+
+        //  newparam
+        const xml::XMLElement* newparam = firstChildElement(profile_common, "newparam");
+
+        while (newparam) {
+            const char* sid = getElementAttribute(newparam, "sid");
+            const xml::XMLElement* surface = firstChildElement(newparam, "surface");
+            const xml::XMLElement* sampler2d = firstChildElement(newparam, "sampler2D");
+            if (surface) {
+                surface_ = std::make_shared<Surface>();
+                surface_->setupSurface(sid, surface);
+            }
+            else if (sampler2d) {
+                sampler2d_ = std::make_shared<Sampler2D>();
+                sampler2d_->setupSampler2D(sid, sampler2d);
+            }
+
+            newparam = newparam->NextSiblingElement("newparam");
+        }
     }
 
+    void dump() {
+        TINY_COLLADA_TRACE("EffectData: id = %s\n", id_);
+        if (material_) {
+            material_->dump();
+        }
+        if (sampler2d_) {
+            sampler2d_->dump();
+        }
+        if (surface_) {
+            surface_->dump();
+        }
+    }
     EffectData()
         : id_(nullptr)
         , material_(nullptr)
+        , sampler2d_(nullptr)
+        , surface_(nullptr)
     {}
 
 
     const char* id_;
     std::shared_ptr<tc::ColladaMaterial> material_;
+    std::shared_ptr<Sampler2D> sampler2d_;
+    std::shared_ptr<Surface> surface_;
 };
 using Effects = std::vector<std::shared_ptr<EffectData>>;
 
@@ -292,28 +467,7 @@ std::vector<InputData> inputs_;
 
 
 
-//----------------------------------------------------------------------
-//  child elementを取得する
-//  大文字小文字がバージョンによってバラバラな場合はここで吸収する
-const xml::XMLElement* firstChildElement(
-    const xml::XMLElement* parent,
-    const char* const child_name
-) {
-    TINY_COLLADA_ASSERT(parent);
-    const xml::XMLElement* child = parent->FirstChildElement(child_name);
-    return child;
-}
 
-//----------------------------------------------------------------------
-//  attributeを取得する
-//  大文字小文字がバージョンによってバラバラな場合はここで吸収する
-const char* getElementAttribute(
-    const xml::XMLElement* element,
-    const char* const attri_name
-) {
-    TINY_COLLADA_ASSERT(element);
-    return element->Attribute(attri_name);
-}
 
 //----------------------------------------------------------------------
 //  ストライド幅を取得
@@ -531,9 +685,9 @@ void collectMaterialNode(
 
 
 //----------------------------------------------------------------------
-//  phongノード読み込み
+//  materialノード読み込み
 void parseEffect(
-    std::shared_ptr<EffectData>& ef,
+    std::shared_ptr<tc::ColladaMaterial>& material,
     const xml::XMLElement* shading
 ) {
     //  エミッション
@@ -542,7 +696,7 @@ void parseEffect(
         const xml::XMLElement* color = firstChildElement(emission, "color");
         if (color) {
             const char* text = color->GetText();
-            readArray(text, &ef->material_->emission_);
+            readArray(text, &material->emission_);
         }
     }
     //  アンビエント
@@ -551,7 +705,7 @@ void parseEffect(
         const xml::XMLElement* color = firstChildElement(ambient, "color");
         if (color) {
             const char* text = color->GetText();
-            readArray(text, &ef->material_->ambient_);
+            readArray(text, &material->ambient_);
         }
     }
 
@@ -561,7 +715,7 @@ void parseEffect(
         const xml::XMLElement* color = firstChildElement(diffuse, "color");
         if (color) {
             const char* text = color->GetText();
-            readArray(text, &ef->material_->diffuse_);
+            readArray(text, &material->diffuse_);
         }
     }
 
@@ -571,7 +725,7 @@ void parseEffect(
         const xml::XMLElement* color = firstChildElement(specular, "color");
         if (color) {
             const char* text = color->GetText();
-            readArray(text, &ef->material_->specular_);
+            readArray(text, &material->specular_);
         }
     }
 
@@ -581,7 +735,7 @@ void parseEffect(
         const xml::XMLElement* color = firstChildElement(reflective, "color");
         if (color) {
             const char* text = color->GetText();
-            readArray(text, &ef->material_->reflective_);
+            readArray(text, &material->reflective_);
         }
     }
     
@@ -592,7 +746,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(reflectivity, "float");
         const char* val = data->GetText();
 
-        ef->material_->reflectivity_ = atof(val);
+        material->reflectivity_ = atof(val);
     }
 
     //  シャイネス
@@ -601,7 +755,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(shininess, "float");
         const char* val = data->GetText();
 
-        ef->material_->shininess_ = atof(val);
+        material->shininess_ = atof(val);
     }
     
     //  透明度
@@ -610,7 +764,7 @@ void parseEffect(
         const xml::XMLElement* data = firstChildElement(transparency, "float");
         const char* val = data->GetText();
 
-        ef->material_->transparency_ = atof(val);
+        material->transparency_ = atof(val);
     }
 
 }
@@ -622,31 +776,13 @@ void collectEffectNode(
     Effects& out,
     const xml::XMLElement* library_effects
 ) {
-    const char* SHADING_NAME[3] = {
-        "blinn",
-        "phong",
-        "----"
-    };
+
     const xml::XMLElement* effect = firstChildElement(library_effects, "effect");
 
     while (effect) {
-        const xml::XMLElement* profile_common = firstChildElement(effect, "profile_COMMON");
-        const xml::XMLElement* technique = firstChildElement(profile_common, "technique");
 
         std::shared_ptr<EffectData> ed = std::make_shared<EffectData>();
-        ed->material_ = std::make_shared<tc::ColladaMaterial>();
-        ed->id_ = getElementAttribute(effect, "id");
-
-        for (int shade_idx = 0; shade_idx < 3; ++shade_idx) {
-            const xml::XMLElement* shading = firstChildElement(technique, SHADING_NAME[shade_idx]);
-            if (shading) {
-                //  シェーディング
-                ed->material_->shading_name_ = SHADING_NAME[shade_idx];
-                parseEffect(ed, shading);
-                break;
-            }
-        }
-        
+        ed->setupEffectData(effect);        
         out.push_back(ed);
         effect = effect->NextSiblingElement("effect");
     }
