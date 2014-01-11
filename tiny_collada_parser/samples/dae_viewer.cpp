@@ -3,6 +3,8 @@
 
 #include "../tiny_collada_parser.hpp"
 #include "multiplatform.hpp"
+#include "libbmp24.hpp"
+
 
 namespace  {
     
@@ -10,7 +12,7 @@ const tc::ColladaScenes* scenes_ = nullptr;
 float zoom_ = 4;
 float height_ = 1;
 const float ZOOM_VALUE = 2.0f;
-
+const char* resource_directory_path_ = nullptr;
 
 struct vec3_t {
     float x_;
@@ -18,6 +20,8 @@ struct vec3_t {
     float z_;
 };
 
+
+libbmp24::Bitmap bmp_;
 
 vec3_t getVertexData(
     const tc::ColladaMesh::ArrayData* m,
@@ -100,28 +104,45 @@ void drawMesh(std::shared_ptr<const tc::ColladaMesh> mesh)
 {
     bool has_vertex = mesh->hasVertex();
     bool has_normal = mesh->hasNormal();
+    bool has_uv = mesh->hasTexCoord();
     
 	//	頂点取得
     const tc::ColladaMesh::ArrayData* pos = mesh->getVertex();
     const tc::ColladaMesh::ArrayData* nor = mesh->getNormals();
+    const tc::ColladaMesh::ArrayData* uv = mesh->getTexCoord();
+
 	if (!pos) {
 		return;
 	}
+    
 	
     //	データ設定
     if (has_vertex) {
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(pos->stride_, GL_FLOAT, 0, pos->data_.data());
     }
+    
     if (has_normal) {
         glEnableClientState(GL_NORMAL_ARRAY);
         glNormalPointer(GL_FLOAT, 0, nor->data_.data());
     }
     
+    if (has_uv) {
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+        glNormalPointer(GL_FLOAT, 0, uv->data_.data());
+    }
+    else {
+        printf("uv not found.\n");
+    }
 
 	//	描画
     int draw_type = GL_TRIANGLES;
-    glDrawElements(draw_type, pos->indices_.size(), GL_UNSIGNED_INT, pos->indices_.data());
+    glDrawElements(
+        draw_type,
+        pos->indices_.size(),
+        GL_UNSIGNED_INT,
+        pos->indices_.data()
+    );
 
 	//	設定を戻す
     if (has_vertex) {
@@ -236,24 +257,57 @@ void timer(int value)
 }
 
 //----------------------------------------------------------------------
+//  アプリの初期化
+void initApp()
+{
+    //  テクスチャロード
+    char tex_path[128];
+    std::strncpy(tex_path, resource_directory_path_, 128);
+    std::strncat(tex_path, "red_grad.bmp", 128);
+    std::ifstream file(tex_path, std::ios::in);
+    bmp_.deserialize(file);
+    bmp_.dump();
+    
+    //  gl texture準備
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGB,
+        bmp_.getWidth(),
+        bmp_.getHeight(),
+        0,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        bmp_.getData()
+    );
+}
+
+//----------------------------------------------------------------------
 //  sample
 void dae_viewer(
-    const char* const dae_path
+    int argc,
+    char** argv,
+    const char* resource_directory_path,
+    const char* const dae_name
 ) {
     tc::Parser parser;
     //  daeを解析
+    //  dae path　作成
+    char dae_path[128];
+    std::strncpy(dae_path, resource_directory_path, 128);
+    std::strncat(dae_path, dae_name, 128);
     tc::Result result = parser.parse(dae_path);
 	if (result.isFailed()) {
 		printf("data parse failed.\n%s\n",dae_path);
         return;
 	}
+    resource_directory_path_ = resource_directory_path;
 
     scenes_ = parser.scenes();
 
 	//	gl設定
-    int argc = 0;
-    char* argv[] = {"\0","\0"};
-//    glutInit(&argc, argv);
+    glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
     glutCreateWindow("sample02");
     glutReshapeFunc(reshape);
@@ -263,5 +317,6 @@ void dae_viewer(
     glutTimerFunc(100 , timer , 0);
 
 	//	イベントループ
+    initApp();
 	glutMainLoop();
 }
