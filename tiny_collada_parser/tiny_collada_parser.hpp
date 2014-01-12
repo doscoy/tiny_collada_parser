@@ -181,7 +181,7 @@ public:
     ColladaMesh()
         : vertex_()
         , normal_()
-        , texcoord_()
+        , uv_()
         , primitive_type_(UNKNOWN_TYPE)
     {}
     ~ColladaMesh(){}
@@ -202,7 +202,7 @@ public:
 
     //  テクスチャ座標を持っているか判定
     bool hasTexCoord() const {
-        return texcoord_.isValidate();
+        return uv_.isValidate();
     }
 
     void setPrimitiveType(
@@ -224,7 +224,7 @@ public:
     }
 
     const ArrayData* getTexCoord() const {
-        return &texcoord_;
+        return &uv_;
     }
 
     void dump();
@@ -233,7 +233,7 @@ public:
 public:
     ArrayData vertex_;
     ArrayData normal_;
-    ArrayData texcoord_;
+    ArrayData uv_;
     PrimitiveType primitive_type_;
     std::shared_ptr<ColladaMaterial> material_;
 };

@@ -3,15 +3,16 @@
 
 #include "../tiny_collada_parser.hpp"
 #include "multiplatform.hpp"
-#include "libbmp24.hpp"
+//#include "libbmp24.hpp"
+#include "/Users/doscoy_t/project/libbmp24/libbmp24.hpp"
 
 
 namespace  {
     
 const tc::ColladaScenes* scenes_ = nullptr;
-float zoom_ = 4;
+float zoom_ = 3.0f;
 float height_ = 1;
-const float ZOOM_VALUE = 2.0f;
+const float ZOOM_VALUE = 0.2f;
 const char* resource_directory_path_ = nullptr;
 
 struct vec3_t {
@@ -20,6 +21,8 @@ struct vec3_t {
     float z_;
 };
 
+const int tex2_size = 64;
+char tex2_[tex2_size][tex2_size][3];
 
 libbmp24::Bitmap bmp_;
 
@@ -129,7 +132,7 @@ void drawMesh(std::shared_ptr<const tc::ColladaMesh> mesh)
     
     if (has_uv) {
         glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glNormalPointer(GL_FLOAT, 0, uv->data_.data());
+        glTexCoordPointer(uv->stride_, GL_FLOAT, 0, uv->data_.data());
     }
     else {
         printf("uv not found.\n");
@@ -263,13 +266,17 @@ void initApp()
     //  テクスチャロード
     char tex_path[128];
     std::strncpy(tex_path, resource_directory_path_, 128);
-    std::strncat(tex_path, "red_grad.bmp", 128);
+    std::strncat(tex_path, "img034.bmp", 128);
     std::ifstream file(tex_path, std::ios::in);
     bmp_.deserialize(file);
     bmp_.dump();
+//   bmp_.createBitmap(64, 64);
+//   bmp_.fill(255, 0, 0);
+
     
     //  gl texture準備
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
@@ -277,10 +284,38 @@ void initApp()
         bmp_.getWidth(),
         bmp_.getHeight(),
         0,
-        GL_RGB,
+        GL_BGR,
         GL_UNSIGNED_BYTE,
         bmp_.getData()
     );
+
+/*
+    //  test
+    for (int i = 0; i < tex2_size; ++i) {
+        for (int j = 0; j < tex2_size; ++j) {
+            tex2_[i][j][0] = 10;
+            tex2_[i][j][1] = 255;
+            tex2_[i][j][2] = 255;
+        }
+    }
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGB,
+        tex2_size,
+        tex2_size,
+        0,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        tex2_
+    );
+*/
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    
+    glEnable(GL_TEXTURE_2D);
 }
 
 //----------------------------------------------------------------------
@@ -309,7 +344,7 @@ void dae_viewer(
 	//	gl設定
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
-    glutCreateWindow("sample02");
+    glutCreateWindow("dae_viewer");
     glutReshapeFunc(reshape);
     glutDisplayFunc(display);
     glutKeyboardFunc(keyboard);

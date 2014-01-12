@@ -1122,7 +1122,6 @@ Result parseCollada(
                 }
 
                 //  データ登録
-//                meshes_.push_back(data);
                 scene->meshes_.push_back(data);
                 
                 //  次へ
@@ -1187,6 +1186,7 @@ void setupMesh(
 
     int offset_size = info->getIndexStride();
 
+    //  頂点情報
     const SourceData* pos_source = info->searchSourceBySemantic("POSITION");
     if (pos_source) {
         printf("pos_source size %d\n", pos_source->data_.size());
@@ -1209,7 +1209,8 @@ void setupMesh(
             );
         }
     }
-    
+
+    //  法線情報
     const SourceData* normal_source = info->searchSourceBySemantic("NORMAL");
     if (normal_source) {
         printf("normal_source size %d\n", normal_source->data_.size());
@@ -1233,7 +1234,6 @@ void setupMesh(
         }
         
         //  頂点インデックスにあわせてデータ変更
-#if 1
         Indices& vindices = mesh->vertex_.indices_;
         Indices& nindices = mesh->normal_.indices_;
         mesh->normal_.data_.resize(pos_source->data_.size(), 8.8);
@@ -1250,21 +1250,52 @@ void setupMesh(
                 printf("　　%d -> %d\n", from, to );
                 mesh->normal_.data_[to_idx + di] = normal_source->data_.at(from_idx + di);
             }
-            
-            
-            for (int x = 0; x < mesh->normal_.data_.size(); ++x) {
-                if ((x % 3) == 0) {
-//                    printf("  ");
-                }
-//                printf ("%1.1f ",mesh->normal_.data_[x]);
-                
-            }
- //           printf("\n");
         }
-#else 
-        mesh->normal_.data_ = normal_source->data_;
+        
+    }
 
-#endif
+
+    //  uv
+    const SourceData* uv_source = info->searchSourceBySemantic("TEXCOORD");
+    if (uv_source) {
+        printf("uv_source size %d\n", uv_source->data_.size());
+        
+        mesh->uv_.stride_ = uv_source->stride_;
+        if (info->face_count_.empty()) {
+            setupIndices(
+                mesh->uv_.indices_,
+                info->raw_indices_,
+                uv_source->input_->offset_,
+                offset_size
+            );
+        }
+        else {
+            setupIndicesMultiFace(
+                mesh->uv_.indices_,
+                info,
+                uv_source->input_->offset_,
+                offset_size
+            );
+        }
+        
+        //  頂点インデックスにあわせてデータ変更
+        Indices& vindices = mesh->vertex_.indices_;
+        Indices& nindices = mesh->uv_.indices_;
+        mesh->uv_.data_.resize(pos_source->data_.size(), 8.8888f);
+        for (int vert_idx = 0; vert_idx < vindices.size(); ++vert_idx) {
+            uint32_t vidx = vindices.at(vert_idx);
+            uint32_t nidx = nindices.at(vert_idx);
+            uint32_t nstride = uv_source->stride_;
+            uint32_t from_idx = nidx * nstride;
+            uint32_t to_idx = vidx * nstride;
+            printf("%d-%d\n", vidx, nidx);
+            for (int di = 0; di < nstride; ++di) {
+                int to = to_idx + di;
+                int from = from_idx + di;
+                printf("　　%d -> %d\n", from, to );
+                mesh->uv_.data_[to_idx + di] = uv_source->data_.at(from_idx + di);
+            }
+        }
         
     }
 }
@@ -1364,11 +1395,6 @@ void relateSourcesToInputs(
 
 //----------------------------------------------------------------------
 //  メッシュリスト取得
-//const Meshes* getMeshList() const {
-    
-//    return &meshes_;
-//}
-
 const ColladaScenes* getScenes() const {
     return &scenes_;
 }
@@ -1376,7 +1402,6 @@ const ColladaScenes* getScenes() const {
 
 private:
     ColladaScenes scenes_;
-//    Meshes meshes_;
 };  // class Parser::Impl
 
 
