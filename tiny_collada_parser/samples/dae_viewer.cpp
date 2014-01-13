@@ -21,9 +21,6 @@ struct vec3_t {
     float z_;
 };
 
-const int tex2_size = 64;
-char tex2_[tex2_size][tex2_size][3];
-
 libbmp24::Bitmap bmp_;
 
 vec3_t getVertexData(
@@ -142,7 +139,7 @@ void drawMesh(std::shared_ptr<const tc::ColladaMesh> mesh)
     int draw_type = GL_TRIANGLES;
     glDrawElements(
         draw_type,
-        pos->indices_.size(),
+        static_cast<GLsizei>(pos->indices_.size()),
         GL_UNSIGNED_INT,
         pos->indices_.data()
     );
@@ -189,7 +186,7 @@ void display()
         
 
 	//	メッシュ描画
-    int scene_count = scenes_->size();
+    uint32_t scene_count = scenes_->size();
     for (int i = 0; i < scene_count; ++i) {
         std::shared_ptr<const tc::ColladaScene> s = scenes_->at(i);
         std::shared_ptr<const tc::ColladaMaterial> material = s->material_;
@@ -219,7 +216,7 @@ void display()
     glDisable(GL_LIGHTING);
     glDisable(GL_LIGHT0);
     
-#if 0
+#if 1
     for (int i = 0; i < scene_count; ++i) {
         std::shared_ptr<const tc::ColladaScene> s = scenes_->at(i);
         const tc::ColladaMeshes& ms = s->meshes_;

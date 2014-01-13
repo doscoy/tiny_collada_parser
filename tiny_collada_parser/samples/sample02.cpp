@@ -22,7 +22,12 @@ void drawMesh(std::shared_ptr<tc::ColladaMesh> mesh)
     glVertexPointer(pos->stride_, GL_FLOAT, 0, pos->data_.data());
 
 	//	描画
-    glDrawElements(GL_TRIANGLES, pos->indices_.size(), GL_UNSIGNED_INT, pos->indices_.data());
+    glDrawElements(
+        GL_TRIANGLES,
+        static_cast<GLsizei>(pos->indices_.size()),
+        GL_UNSIGNED_INT,
+        pos->indices_.data()
+    );
 
 	//	設定を戻す
 	glDisableClientState(GL_VERTEX_ARRAY);
@@ -42,7 +47,7 @@ void display()
 	//	カメラ設定
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(0.0, 5.5, 5.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+	gluLookAt(0.0f, 5.5f, 5.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 
 	//	メッシュ描画
 	drawMesh(mesh);
@@ -67,6 +72,8 @@ void reshape(int width, int height)
 //----------------------------------------------------------------------
 //  sample
 void sample02(
+    int argc,
+    char** argv,
     const char* const dae_path
 ) {
     tc::Parser parser;
@@ -80,9 +87,7 @@ void sample02(
     scenes_ = parser.scenes();
 
 	//	gl設定
-    int argc = 0;
-    char* argv[] = {"\0","\0"};
-//    glutInit(&argc, argv);
+    glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);
     glutCreateWindow("sample02");
     glutReshapeFunc(reshape);

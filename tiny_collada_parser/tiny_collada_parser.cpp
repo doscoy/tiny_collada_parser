@@ -114,7 +114,7 @@ struct VisualSceneData
         if (bind_material_) {
             TINY_COLLADA_TRACE("bind_material = %s", bind_material_);
         }
-        TINY_COLLADA_TRACE(" matrix (%d)", matrix_.size());
+        TINY_COLLADA_TRACE(" matrix (%lu)", matrix_.size());
         for (int i = 0; i < matrix_.size(); ++i) {
             if ((i % 4) == 0) {
                 TINY_COLLADA_TRACE("\n");
@@ -346,11 +346,11 @@ struct InputData
     void dump() {
         TINY_COLLADA_TRACE("InputData:semantic = ");
         if (semantic_) {
-            printf(semantic_);
+            printf("%s", semantic_);
         }
         TINY_COLLADA_TRACE("  source = ");
         if (source_) {
-            printf(source_);
+            printf("%s", source_);
         }
         TINY_COLLADA_TRACE("  offset = %d\n", offset_);
     }
@@ -409,7 +409,7 @@ SourceData* searchSourceBySemantic(
     const char* const semantic
 ) {
     size_t sources_size = sources_.size();
-    TINY_COLLADA_TRACE("\nsearchSourceBySemantic %s %d\n", semantic, sources_size);
+    TINY_COLLADA_TRACE("\nsearchSourceBySemantic %s %lu\n", semantic, sources_size);
     for (int i = 0; i < sources_size; ++i) {
         SourceData* source = &sources_[i];
         InputData* input = source->input_;
@@ -538,7 +538,7 @@ void readSourceNode(
         if (count_str) {
             data_count = std::atoi(count_str);
         }
-        TINY_COLLADA_TRACE("reserve %d\n", data_count);
+        TINY_COLLADA_TRACE("reserve %lu\n", data_count);
         out->data_.reserve(data_count);
 
         //  データ取得
@@ -1116,7 +1116,7 @@ Result parseCollada(
                         const ColladaMesh::ArrayData* narray = data->getNormals();
                         size_t visize = varray->data_.size();
                         size_t nisize = narray->data_.size();
-                        TINY_COLLADA_TRACE("%d[v] == %d[n]\n", visize, nisize);
+                        TINY_COLLADA_TRACE("%lu[v] == %lu[n]\n", visize, nisize);
                         TINY_COLLADA_ASSERT(visize == nisize);
                     }
                 }
@@ -1164,7 +1164,7 @@ void parseMeshNode(
         SourceData* src = &info->sources_[i];
 		if (src->input_) {
 			printf("SRC:%s - INPUT:%s\n", src->id_, src->input_->source_);
-			printf("  DATA size %d\n", src->data_.size());
+			printf("  DATA size %lu\n", src->data_.size());
 		}
     }
     printf("\n\n");
@@ -1189,7 +1189,7 @@ void setupMesh(
     //  頂点情報
     const SourceData* pos_source = info->searchSourceBySemantic("POSITION");
     if (pos_source) {
-        printf("pos_source size %d\n", pos_source->data_.size());
+        printf("pos_source size %lu\n", pos_source->data_.size());
         mesh->vertex_.data_ = pos_source->data_;
         mesh->vertex_.stride_ = pos_source->stride_;
         if (info->face_count_.empty()) {
@@ -1213,7 +1213,7 @@ void setupMesh(
     //  法線情報
     const SourceData* normal_source = info->searchSourceBySemantic("NORMAL");
     if (normal_source) {
-        printf("normal_source size %d\n", normal_source->data_.size());
+        printf("normal_source size %lu\n", normal_source->data_.size());
         
         mesh->normal_.stride_ = normal_source->stride_;
         if (info->face_count_.empty()) {
@@ -1258,7 +1258,7 @@ void setupMesh(
     //  uv
     const SourceData* uv_source = info->searchSourceBySemantic("TEXCOORD");
     if (uv_source) {
-        printf("uv_source size %d\n", uv_source->data_.size());
+        printf("uv_source size %lu\n", uv_source->data_.size());
         
         mesh->uv_.stride_ = uv_source->stride_;
         if (info->face_count_.empty()) {
@@ -1473,7 +1473,7 @@ void ColladaMesh::ArrayData::dump()
         printf("This ArrayData is invalidate data.\n");
         return;
     }
-    printf("vertices   size = %lu  stride = %lu\n", data_.size(), stride_);
+    printf("vertices   size = %lu  stride = %hhd\n", data_.size(), stride_);
     size_t data_size = data_.size();
     //  データ
     if (data_size > 0) {
